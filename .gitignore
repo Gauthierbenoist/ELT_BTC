@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local raw data lake (written by the 1m backfill, never committed)
+data/

@@ -1,0 +1,19 @@
+# Pipeline configuration. No secrets here: DATABASE_URL comes from the environment.
+exchange:
+  id: binance
+  symbol: BTC/USDT
+  page_limit: 1000          # max candles per fetch_ohlcv call (Binance limit)
+  max_retries: 6
+  backoff_base_seconds: 1.0
+  backoff_max_seconds: 60.0
+
+backfill:
+  timeframe: 1m
+  start: 2017-08-17         # BTC/USDT listing date on Binance (UTC)
+  parquet_root: data/raw/1m # relative to the repo root
+  compression: zstd
+
+incremental:
+  timeframe: 15m
+  lookback_hours: 48
+  table: raw_ohlcv_15m

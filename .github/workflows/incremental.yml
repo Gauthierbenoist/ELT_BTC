@@ -1,0 +1,29 @@
+name: Incremental 15m ingestion
+
+on:
+  schedule:
+    - cron: "15 6 * * *" # daily at 06:15 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        # Python version comes from .python-version
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run incremental ingestion
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: uv run python -m elt_btc.ingestion.incremental_15m

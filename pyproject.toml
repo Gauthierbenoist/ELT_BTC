@@ -1,0 +1,64 @@
+[project]
+name = "elt-btc"
+version = "0.1.0"
+description = "ELT pipeline for BTC spot OHLCV: 1m Parquet backfill + 15m incremental ingestion to Postgres (Neon)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Gauthier Benoist" }]
+dependencies = [
+    "ccxt>=4.3",
+    "pandas>=2.2",
+    "pyarrow>=16.0",
+    "pandera>=0.24",
+    "pydantic>=2.7",
+    "PyYAML>=6.0",
+    "psycopg[binary]>=3.1",
+    "truststore>=0.10",
+]
+
+[project.scripts]
+backfill-1m = "elt_btc.ingestion.backfill_1m:main"
+incremental-15m = "elt_btc.ingestion.incremental_15m:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "pandas-stubs",
+    "types-PyYAML",
+]
+
+[tool.uv]
+# Prefer a system CPython (e.g. python.org build) over uv-managed builds:
+# some antivirus TLS hooks crash the python-build-standalone OpenSSL.
+python-preference = "system"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/elt_btc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# T20 bans print(): all runtime output must go through logging.
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "T20"]
+
+[tool.mypy]
+# 3.12 analysis mode: numpy 2.5 stubs use PEP 695 `type` statements.
+python_version = "3.12"
+strict = true
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["ccxt.*", "pandera.*", "pyarrow.*"]
+ignore_missing_imports = true
