@@ -151,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         now_ms = min(now_ms, date_to_epoch_ms(args.end))
     end_date = datetime.fromtimestamp(now_ms / 1000, tz=UTC).date()
 
-    exchange = create_exchange(settings.exchange.id)
+    exchange = create_exchange(settings.exchange.id, settings.exchange.public_api_url)
     logger.info(
         "Backfilling %s %s from %s to %s into %s",
         settings.exchange.symbol,

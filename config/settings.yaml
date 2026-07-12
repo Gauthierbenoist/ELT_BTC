@@ -2,6 +2,9 @@
 exchange:
   id: binance
   symbol: BTC/USDT
+  # Market-data-only endpoint: same klines as api.binance.com but without
+  # the HTTP 451 geo-block on US IPs (GitHub Actions runners).
+  public_api_url: https://data-api.binance.vision/api/v3
   page_limit: 1000          # max candles per fetch_ohlcv call (Binance limit)
   max_retries: 6
   backoff_base_seconds: 1.0

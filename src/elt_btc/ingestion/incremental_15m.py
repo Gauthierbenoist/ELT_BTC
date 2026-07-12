@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
 
     now_ms = int(time.time() * 1000)
     since_ms = now_ms - cfg.lookback_hours * 3_600_000
-    exchange = create_exchange(settings.exchange.id)
+    exchange = create_exchange(settings.exchange.id, settings.exchange.public_api_url)
     logger.info(
         "Fetching %s %s candles since %s (lookback %dh)",
         settings.exchange.symbol,

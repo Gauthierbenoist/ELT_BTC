@@ -19,10 +19,17 @@ _CONFIG_PATH_ENV_VAR = "ELT_BTC_CONFIG"
 
 
 class ExchangeSettings(BaseModel):
-    """ccxt exchange identity and retry/pagination parameters."""
+    """ccxt exchange identity and retry/pagination parameters.
+
+    ``public_api_url`` overrides the exchange's public (market data) API
+    base URL. For Binance, ``https://data-api.binance.vision/api/v3`` serves
+    the same market data without the HTTP 451 geo-block that hits US IPs
+    (e.g. GitHub Actions runners).
+    """
 
     id: str = "binance"
     symbol: str = "BTC/USDT"
+    public_api_url: str | None = None
     page_limit: int = Field(default=1000, gt=0)
     max_retries: int = Field(default=6, gt=0)
     backoff_base_seconds: float = Field(default=1.0, gt=0)

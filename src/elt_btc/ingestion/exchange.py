@@ -22,10 +22,18 @@ logger = logging.getLogger(__name__)
 OhlcvRow = list[float]
 
 
-def create_exchange(exchange_id: str) -> ccxt.Exchange:
-    """Instantiate a ccxt exchange with built-in rate limiting enabled."""
+def create_exchange(exchange_id: str, public_api_url: str | None = None) -> ccxt.Exchange:
+    """Instantiate a ccxt exchange with built-in rate limiting enabled.
+
+    Args:
+        public_api_url: Optional override of the public (market data) API
+            base URL — see :class:`elt_btc.config.ExchangeSettings`.
+    """
     exchange_class = getattr(ccxt, exchange_id)
-    return exchange_class({"enableRateLimit": True})
+    exchange: ccxt.Exchange = exchange_class({"enableRateLimit": True})
+    if public_api_url is not None:
+        exchange.urls["api"]["public"] = public_api_url
+    return exchange
 
 
 def fetch_page_with_retry(
