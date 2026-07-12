@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: "15 6 * * *" # daily at 06:15 UTC
   workflow_dispatch: {}
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -26,4 +28,16 @@ jobs:
       - name: Run incremental ingestion
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: uv run python -m elt_btc.ingestion.incremental_15m
+        # On failure, surface the tail of the output as a workflow annotation
+        # so the error is visible without opening the raw logs.
+        run: |
+          set +e
+          uv run python -m elt_btc.ingestion.incremental_15m 2>&1 | tee run.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            msg=$(tail -c 1200 run.log)
+            msg="${msg//'%'/%25}"
+            msg="${msg//$'\n'/%0A}"
+            echo "::error title=incremental_15m failed::${msg}"
+          fi
+          exit "$code"

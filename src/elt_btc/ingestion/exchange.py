@@ -31,6 +31,11 @@ def create_exchange(exchange_id: str, public_api_url: str | None = None) -> ccxt
     """
     exchange_class = getattr(ccxt, exchange_id)
     exchange: ccxt.Exchange = exchange_class({"enableRateLimit": True})
+    if exchange_id == "binance":
+        # Only load spot markets: by default ccxt also queries the futures
+        # hosts (fapi/dapi.binance.com), which stay geo-blocked (HTTP 451)
+        # from US IPs even when public_api_url points at binance.vision.
+        exchange.options["fetchMarkets"] = ["spot"]
     if public_api_url is not None:
         exchange.urls["api"]["public"] = public_api_url
     return exchange
