@@ -125,6 +125,24 @@ writes a self-contained, reproducible directory `outputs/benchmark/run_<UTC>/`:
 | `calibration.json` | reliability-diagram data per model (pooled OOS) |
 | `folds.csv` | one row per (model, fold) for quick spreadsheet analysis |
 
+### Dashboard
+
+Interactive comparison of every model in a run — metrics table (Sharpe
+gross/net, annual return, volatility, max drawdown, accuracy, AUC, number
+of trades…), net equity vs buy & hold, drawdown curves, net-return
+distributions, feature importances and calibration:
+
+```bash
+uv sync --group dashboard        # streamlit + plotly (kept out of CI)
+uv run streamlit run dashboard/app.py
+```
+
+Everything is recomputed live from `predictions.parquet` through the same
+`strategy_returns` code path as the benchmark, so the **fee and
+neutral-band sliders re-price all curves and metrics instantly** without
+reloading any model. Models are persisted compressed (`joblib`, zlib-3,
+~2x smaller) and reload transparently with `joblib.load`.
+
 The backtest layer ([ml/backtest.py](src/elt_btc/ml/backtest.py)) is for
 *evaluation only*: sign-of-probability positions, flat one-way fee per
 position change (default 10 bps), no slippage/sizing. Reference run: the

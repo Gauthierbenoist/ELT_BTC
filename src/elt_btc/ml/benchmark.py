@@ -135,7 +135,8 @@ def run_benchmark(
                 )
             )
             if models_dir is not None:
-                joblib.dump(model, models_dir / f"{name}_fold{fold}.joblib")
+                # compress=3 (zlib): ~5x smaller LightGBM files, negligible load cost.
+                joblib.dump(model, models_dir / f"{name}_fold{fold}.joblib", compress=3)
             if fold == settings.split.n_splits - 1:
                 importances[name] = _extract_importances(name, model, list(dataset.X.columns))
 

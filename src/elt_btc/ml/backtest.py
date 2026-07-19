@@ -42,6 +42,28 @@ def max_drawdown(returns: np.ndarray) -> float:
     return float((equity / peak - 1.0).min())
 
 
+def strategy_returns(
+    p_up: np.ndarray,
+    next_returns: np.ndarray,
+    *,
+    fee_rate: float,
+    threshold_band: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-bar ``(gross, net, positions)`` of trading the forecasts.
+
+    ``next_returns[t]`` must be the simple return of the bar the label of
+    sample ``t`` refers to (``close_{t+1}/close_t - 1``) — an outcome
+    column, never a feature. Fees are charged on every unit of position
+    change, including the initial entry. Shared by :func:`backtest_metrics`
+    and the dashboard so every consumer sees identical numbers.
+    """
+    positions = positions_from_proba(p_up, threshold_band)
+    gross = positions * next_returns
+    position_changes = np.abs(np.diff(positions, prepend=0.0))
+    net = gross - fee_rate * position_changes
+    return gross, net, positions
+
+
 def backtest_metrics(
     p_up: np.ndarray,
     next_returns: np.ndarray,
@@ -50,25 +72,24 @@ def backtest_metrics(
     bars_per_year: float,
     threshold_band: float = 0.0,
 ) -> dict[str, float]:
-    """Financial metrics of trading the forecasts on next-bar returns.
-
-    ``next_returns[t]`` must be the simple return of the bar the label of
-    sample ``t`` refers to (``close_{t+1}/close_t - 1``) — an outcome
-    column, never a feature. Fees are charged on every unit of position
-    change, including the initial entry.
-    """
-    positions = positions_from_proba(p_up, threshold_band)
-    gross = positions * next_returns
+    """Financial metrics of trading the forecasts on next-bar returns."""
+    gross, net, positions = strategy_returns(
+        p_up, next_returns, fee_rate=fee_rate, threshold_band=threshold_band
+    )
     position_changes = np.abs(np.diff(positions, prepend=0.0))
-    net = gross - fee_rate * position_changes
     in_market = positions != 0
     hit_rate = float((gross[in_market] > 0).mean()) if in_market.any() else float("nan")
+    ann_volatility = (
+        float(net.std(ddof=1) * math.sqrt(bars_per_year)) if len(net) > 1 else float("nan")
+    )
     return {
         "sharpe_gross": sharpe_ratio(gross, bars_per_year),
         "sharpe_net": sharpe_ratio(net, bars_per_year),
         "ann_return_net": float(net.mean() * bars_per_year),
+        "ann_volatility_net": ann_volatility,
         "hit_rate": hit_rate,
         "max_drawdown_net": max_drawdown(net),
+        "n_trades": float(position_changes.sum()),
         "turnover": float(position_changes.mean()),
         "exposure": float(np.abs(positions).mean()),
     }

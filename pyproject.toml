@@ -31,6 +31,12 @@ dev = [
     "pandas-stubs",
     "types-PyYAML",
 ]
+# Optional analysis UI; not installed by `uv sync --frozen` in CI.
+dashboard = [
+    "streamlit>=1.35",
+    "plotly>=5.20",
+    "scipy>=1.11",
+]
 
 [tool.uv]
 # Prefer a system CPython (e.g. python.org build) over uv-managed builds:
@@ -59,8 +65,8 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "T20"]
 # 3.12 analysis mode: numpy 2.5 stubs use PEP 695 `type` statements.
 python_version = "3.12"
 strict = true
-files = ["src"]
+files = ["src", "dashboard"]
 
 [[tool.mypy.overrides]]
-module = ["ccxt.*", "pandera.*", "pyarrow.*", "sklearn.*", "lightgbm.*", "joblib.*"]
+module = ["ccxt.*", "pandera.*", "pyarrow.*", "sklearn.*", "lightgbm.*", "joblib.*", "plotly.*", "scipy.*"]
 ignore_missing_imports = true

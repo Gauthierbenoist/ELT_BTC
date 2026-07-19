@@ -10,6 +10,7 @@ from elt_btc.ml.backtest import (
     max_drawdown,
     positions_from_proba,
     sharpe_ratio,
+    strategy_returns,
 )
 
 BARS_PER_YEAR = 24 * 365
@@ -63,6 +64,28 @@ def test_constant_position_pays_fees_once():
     assert metrics["turnover"] == pytest.approx(1 / 4)  # single entry, no flips
     expected_net_mean = ret.mean() - 0.001 / 4
     assert metrics["ann_return_net"] == pytest.approx(expected_net_mean * BARS_PER_YEAR)
+
+
+def test_metrics_consistent_with_strategy_returns():
+    rng = np.random.default_rng(3)
+    ret = rng.normal(0, 0.01, 300)
+    p_up = rng.random(300)
+    gross, net, positions = strategy_returns(p_up, ret, fee_rate=0.001)
+    metrics = backtest_metrics(p_up, ret, fee_rate=0.001, bars_per_year=BARS_PER_YEAR)
+    assert metrics["sharpe_net"] == pytest.approx(sharpe_ratio(net, BARS_PER_YEAR))
+    assert metrics["max_drawdown_net"] == pytest.approx(max_drawdown(net))
+    assert metrics["ann_return_net"] == pytest.approx(net.mean() * BARS_PER_YEAR)
+    assert metrics["ann_volatility_net"] == pytest.approx(net.std(ddof=1) * np.sqrt(BARS_PER_YEAR))
+    assert metrics["exposure"] == pytest.approx(np.abs(positions).mean())
+
+
+def test_n_trades_counts_position_changes():
+    # long, long, short, flat-ish? -> use explicit probabilities
+    p_up = np.array([0.9, 0.9, 0.1, 0.9])  # +1, +1, -1, +1
+    ret = np.zeros(4)
+    metrics = backtest_metrics(p_up, ret, fee_rate=0.0, bars_per_year=BARS_PER_YEAR)
+    # Entry (1) + flip to short (2) + flip back to long (2) = 5 units of change.
+    assert metrics["n_trades"] == pytest.approx(5.0)
 
 
 def test_neutral_band_keeps_out_of_market():
