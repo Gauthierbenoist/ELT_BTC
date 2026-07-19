@@ -1,0 +1,22 @@
+# ML benchmark configuration (P(up) on the next bar, OHLC-only features).
+dataset:
+  parquet_root: data/raw/1m
+  timeframe: 1h
+  # 1h bars built from fewer 1m candles than this (exchange gaps) are dropped.
+  min_minutes_per_bar: 45
+
+features:
+  momentum_windows: [3, 6, 12, 24, 72, 168]
+  vol_windows: [24, 72, 168]
+  range_vol_windows: [24, 168]   # Parkinson / Garman-Klass
+  channel_windows: [24, 168]     # Donchian-style close position
+  rsi_period: 14
+
+split:
+  n_splits: 8
+  test_size: 4380       # ~6 months of 1h bars per test fold
+  min_train_size: 26280 # ~3 years before the first test fold
+  purge: 24             # bars removed before each test fold (label horizon = 1)
+
+models:
+  seed: 42

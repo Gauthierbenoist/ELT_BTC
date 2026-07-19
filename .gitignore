@@ -219,3 +219,6 @@ __marimo__/
 
 # Local raw data lake (written by the 1m backfill, never committed)
 data/
+
+# Benchmark / experiment reports (regenerable from the lake)
+outputs/

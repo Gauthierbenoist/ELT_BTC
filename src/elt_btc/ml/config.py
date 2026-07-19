@@ -1,0 +1,67 @@
+"""Typed configuration for the ML benchmark (YAML -> Pydantic)."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import yaml
+from pydantic import BaseModel, Field
+
+DEFAULT_BENCHMARK_CONFIG_PATH = Path("config/benchmark.yaml")
+_CONFIG_PATH_ENV_VAR = "ELT_BTC_BENCHMARK_CONFIG"
+
+
+class DatasetSettings(BaseModel):
+    """Source lake and bar-construction parameters."""
+
+    parquet_root: Path = Path("data/raw/1m")
+    timeframe: str = "1h"
+    min_minutes_per_bar: int = Field(default=45, gt=0)
+
+
+class FeatureSettings(BaseModel):
+    """Rolling-window lengths (in bars) for the OHLC feature set."""
+
+    momentum_windows: list[int] = [3, 6, 12, 24, 72, 168]
+    vol_windows: list[int] = [24, 72, 168]
+    range_vol_windows: list[int] = [24, 168]
+    channel_windows: list[int] = [24, 168]
+    rsi_period: int = Field(default=14, gt=1)
+
+
+class SplitSettings(BaseModel):
+    """Purged walk-forward cross-validation layout (all sizes in bars)."""
+
+    n_splits: int = Field(default=8, gt=0)
+    test_size: int = Field(default=4380, gt=0)
+    min_train_size: int = Field(default=26280, gt=0)
+    purge: int = Field(default=24, ge=1)
+
+
+class ModelSettings(BaseModel):
+    """Model-level knobs."""
+
+    seed: int = 42
+
+
+class BenchmarkSettings(BaseModel):
+    """Root settings object, mirroring ``config/benchmark.yaml``."""
+
+    dataset: DatasetSettings = DatasetSettings()
+    features: FeatureSettings = FeatureSettings()
+    split: SplitSettings = SplitSettings()
+    models: ModelSettings = ModelSettings()
+
+
+def load_benchmark_settings(path: Path | None = None) -> BenchmarkSettings:
+    """Load and validate benchmark settings from a YAML file.
+
+    Resolution order: explicit ``path``, the ``ELT_BTC_BENCHMARK_CONFIG``
+    environment variable, then ``config/benchmark.yaml`` relative to the
+    current working directory.
+    """
+    resolved = path or Path(os.environ.get(_CONFIG_PATH_ENV_VAR, DEFAULT_BENCHMARK_CONFIG_PATH))
+    with resolved.open(encoding="utf-8") as fh:
+        raw = yaml.safe_load(fh) or {}
+    return BenchmarkSettings.model_validate(raw)

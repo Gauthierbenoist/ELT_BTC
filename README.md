@@ -101,6 +101,49 @@ One-time setup: add the `DATABASE_URL` secret in
 *Settings → Secrets and variables → Actions*. Any unhandled exception fails
 the job, so a red run means data did not land.
 
+## ML benchmark (P(up), OHLC-only)
+
+Baseline models predicting `P(close_{t+1} > close_t)` on **1h bars**
+resampled from the 1m lake, evaluated with **purged walk-forward
+cross-validation**. This is the reference floor every future model must
+beat under the same protocol.
+
+```bash
+uv run python -m elt_btc.ml.benchmark                      # full zoo
+uv run python -m elt_btc.ml.benchmark --models logreg      # subset
+```
+
+Configuration in [config/benchmark.yaml](config/benchmark.yaml); reports
+(metrics per fold + aggregate, feature importances) land in
+`outputs/benchmark/run_<UTC>/`.
+
+### Look-ahead protections
+
+1. Causal resampling: a 1h bar uses only the 1m candles inside its hour;
+   bars with < 45 minutes of data (exchange outages) are dropped.
+2. Causal features by construction ([features/ohlc.py](src/elt_btc/features/ohlc.py)):
+   trailing `rolling`/`shift(k>=0)`/`ewm` only — the contract is enforced by a
+   **prefix-invariance test** (truncating the future must not change past
+   feature values) in [test_features_ohlc.py](tests/test_features_ohlc.py).
+3. Only the target looks forward (`shift(-1)`), and the last row is dropped.
+4. [PurgedWalkForwardSplit](src/elt_btc/ml/splits.py): expanding train,
+   chronological test folds, `purge` bars removed before each test window so
+   no training label overlaps it.
+
+### Reference results (8 folds ≈ 6 months each, 2022-07 → 2026-07)
+
+| Model | AUC | Log-loss | Accuracy |
+|---|---|---|---|
+| prior | 0.500 ± 0.000 | 0.6931 | 0.507 |
+| momentum_sign | 0.530 ± 0.012 | 0.6915 | 0.530 |
+| logreg | 0.555 ± 0.014 | 0.6891 | 0.539 |
+| lightgbm | 0.558 ± 0.011 | 0.6919 | 0.543 |
+
+Read this honestly: ~0.55 AUC on 1h BTC from OHLC alone reflects real but
+weak short-horizon autocorrelation — before any excitement, remember it is
+gross of fees/slippage and says nothing about a tradable edge. Any future
+model claiming much more should first be suspected of leakage.
+
 ## Development
 
 ```bash
