@@ -20,3 +20,7 @@ split:
 
 models:
   seed: 42
+
+backtest:
+  fee_bps: 10.0        # one-way cost per unit of position change (Binance taker ~10 bps)
+  threshold_band: 0.0  # neutral zone half-width around p=0.5 (0 = always in the market)

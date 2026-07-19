@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from elt_btc.ml.dataset import make_target, resample_to_bars
+from elt_btc.ml.dataset import make_next_return, make_target, resample_to_bars
 
 MIN_MS = 60_000
 HOUR_MS = 3_600_000
@@ -58,3 +59,14 @@ def test_make_target_alignment():
     # y_t compares close_{t+1} to close_t; equality counts as "not up".
     assert list(y.iloc[:4]) == [1.0, 0.0, 0.0, 1.0]
     assert np.isnan(y.iloc[4])  # last label unknowable without the future
+
+
+def test_next_return_consistent_with_target():
+    close = pd.Series([100.0, 101.0, 100.5, 100.5, 102.0])
+    ret_next = make_next_return(close)
+    assert ret_next.iloc[0] == pytest.approx(0.01)
+    assert np.isnan(ret_next.iloc[4])
+    y = make_target(close)
+    # The label is exactly the sign of the evaluation return.
+    valid = ret_next.notna()
+    assert list((ret_next[valid] > 0).astype(float)) == list(y[valid])

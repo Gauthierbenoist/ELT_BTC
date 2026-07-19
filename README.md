@@ -113,9 +113,24 @@ uv run python -m elt_btc.ml.benchmark                      # full zoo
 uv run python -m elt_btc.ml.benchmark --models logreg      # subset
 ```
 
-Configuration in [config/benchmark.yaml](config/benchmark.yaml); reports
-(metrics per fold + aggregate, feature importances) land in
-`outputs/benchmark/run_<UTC>/`.
+Configuration in [config/benchmark.yaml](config/benchmark.yaml). Each run
+writes a self-contained, reproducible directory `outputs/benchmark/run_<UTC>/`:
+
+| File | Content |
+|---|---|
+| `metrics.json` | config + git commit, per-fold & aggregate classification **and backtest** metrics (Sharpe gross/net, max drawdown, turnover, exposure) |
+| `predictions.parquet` | every OOS prediction (`model, fold, timestamp, y, p_up, ret_next`) — the raw material for SHAP, calibration, custom backtests, without refitting |
+| `models/` | every fitted model (`<name>_fold<i>.joblib`), reloadable via `joblib.load` |
+| `importances.json` | LightGBM **gain** importances / abs. logreg coefficients |
+| `calibration.json` | reliability-diagram data per model (pooled OOS) |
+| `folds.csv` | one row per (model, fold) for quick spreadsheet analysis |
+
+The backtest layer ([ml/backtest.py](src/elt_btc/ml/backtest.py)) is for
+*evaluation only*: sign-of-probability positions, flat one-way fee per
+position change (default 10 bps), no slippage/sizing. Reference run: the
+LightGBM Sharpe is **+1.9 gross but deeply negative net of fees** (turnover
+~0.8 position changes per hour) — the statistical edge is real, the trading
+edge at 1h horizon is not. That, precisely, is what a benchmark is for.
 
 ### Look-ahead protections
 

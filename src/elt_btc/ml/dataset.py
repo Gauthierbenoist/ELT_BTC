@@ -26,11 +26,17 @@ _BAR_COLUMNS = ["timestamp", "open", "high", "low", "close"]
 
 @dataclass(frozen=True)
 class Dataset:
-    """Aligned learning matrix: one row per decision time (bar open time in ms)."""
+    """Aligned learning matrix: one row per decision time (bar open time in ms).
+
+    ``ret_next`` is the next-bar simple return the label refers to. Like
+    ``y`` it is an *outcome* column — used for evaluation/backtest only,
+    never as a feature.
+    """
 
     X: pd.DataFrame
     y: pd.Series
     timestamps: pd.Series
+    ret_next: pd.Series
 
 
 def load_1m_lake(root: Path) -> pd.DataFrame:
@@ -79,6 +85,11 @@ def make_target(close: pd.Series) -> pd.Series:
     )
 
 
+def make_next_return(close: pd.Series) -> pd.Series:
+    """Next-bar simple return ``close_{t+1}/close_t - 1``; NaN on the last row."""
+    return close.shift(-1) / close - 1.0
+
+
 def build_dataset(settings: BenchmarkSettings) -> Dataset:
     """Full pipeline: lake -> bars -> features + target, NaN rows dropped."""
     cfg = settings.dataset
@@ -90,15 +101,17 @@ def build_dataset(settings: BenchmarkSettings) -> Dataset:
 
     features = build_features(bars, settings.features)
     target = make_target(bars["close"])
+    next_return = make_next_return(bars["close"])
 
     valid = features.notna().all(axis=1) & target.notna()
     X = features.loc[valid].reset_index(drop=True)
     y = target.loc[valid].astype("int64").reset_index(drop=True)
     timestamps = bars.loc[valid, "timestamp"].reset_index(drop=True)
+    ret_next = next_return.loc[valid].reset_index(drop=True)
     logger.info(
         "Dataset ready: %d samples x %d features, up-rate %.4f",
         len(X),
         X.shape[1],
         float(y.mean()),
     )
-    return Dataset(X=X, y=y, timestamps=timestamps)
+    return Dataset(X=X, y=y, timestamps=timestamps, ret_next=ret_next)

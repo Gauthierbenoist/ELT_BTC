@@ -45,6 +45,13 @@ class ModelSettings(BaseModel):
     seed: int = 42
 
 
+class BacktestSettings(BaseModel):
+    """Evaluation-only backtest parameters (see ``elt_btc.ml.backtest``)."""
+
+    fee_bps: float = Field(default=10.0, ge=0)
+    threshold_band: float = Field(default=0.0, ge=0, lt=0.5)
+
+
 class BenchmarkSettings(BaseModel):
     """Root settings object, mirroring ``config/benchmark.yaml``."""
 
@@ -52,6 +59,7 @@ class BenchmarkSettings(BaseModel):
     features: FeatureSettings = FeatureSettings()
     split: SplitSettings = SplitSettings()
     models: ModelSettings = ModelSettings()
+    backtest: BacktestSettings = BacktestSettings()
 
 
 def load_benchmark_settings(path: Path | None = None) -> BenchmarkSettings:
