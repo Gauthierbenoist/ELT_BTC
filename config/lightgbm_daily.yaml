@@ -1,0 +1,28 @@
+# LightGBM daily configuration. Windows are in *daily* bars.
+# ~3,060 usable samples (2017-08 -> now, minus 180-day warm-up): enough for
+# coarse conclusions, still an order of magnitude below the 1h protocol.
+dataset:
+  parquet_root: data/raw/1m
+  timeframe: 1d
+  min_minutes_per_bar: 1300  # of 1440 minutes per day; tolerates known gaps
+
+features:
+  momentum_windows: [3, 7, 14, 30, 90, 180]
+  vol_windows: [14, 30, 90]
+  range_vol_windows: [14, 90]
+  channel_windows: [30, 180]
+  rsi_period: 14
+  volume_windows: [14, 90]
+
+split:
+  n_splits: 6
+  test_size: 182       # ~6 months per fold -> tests 2023-07 .. 2026-07
+  min_train_size: 1460 # ~4 years before the first test fold
+  purge: 3
+
+models:
+  seed: 42
+
+backtest:
+  fee_bps: 10.0
+  threshold_band: 0.0
