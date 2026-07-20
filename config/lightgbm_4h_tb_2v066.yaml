@@ -1,0 +1,35 @@
+# Triple barrier with asymmetric 3:1 payoff, tighter variant — profit-take
+# at +2 sigma, stop-loss at -2/3 sigma. Same 3:1 ratio as tb_3v1 but
+# barriers are closer: shorter holdings, more trades.
+dataset:
+  parquet_root: data/raw/1m
+  timeframe: 4h
+  min_minutes_per_bar: 220
+
+features:
+  momentum_windows: [3, 6, 12, 24, 42, 84]
+  vol_windows: [6, 18, 42]
+  range_vol_windows: [6, 42]
+  channel_windows: [18, 84]
+  rsi_period: 14
+  volume_windows: [6, 42]
+
+target:
+  type: triple_barrier
+  vol_span: 42
+  pt_mult: 2.0
+  sl_mult: 0.667
+  max_holding: 42
+
+split:
+  n_splits: 8
+  test_size: 1095
+  min_train_size: 6570
+  purge: 48
+
+models:
+  seed: 42
+
+backtest:
+  fee_bps: 10.0
+  threshold_band: 0.0
