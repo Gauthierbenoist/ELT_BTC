@@ -426,6 +426,87 @@ def main() -> None:
                         f"{int(row['holding_bars'])} bougies",
                     )
 
+                    if run.bars is None:
+                        st.info(
+                            "Vue chandelier indisponible : ce run ne contient pas "
+                            "bars.parquet (relancez-le avec une version récente)."
+                        )
+                    else:
+                        candles_before, candles_after = 25, 10
+                        entry_ts = int(row["entry_ts"])
+                        exit_ts = int(row["exit_ts"])
+                        window = run.bars[
+                            (run.bars["timestamp"] >= entry_ts - candles_before * bar_ms)
+                            & (run.bars["timestamp"] <= exit_ts + candles_after * bar_ms)
+                        ]
+                        times = pd.to_datetime(window["timestamp"], unit="ms", utc=True)
+                        chart = go.Figure(
+                            go.Candlestick(
+                                x=times,
+                                open=window["open"],
+                                high=window["high"],
+                                low=window["low"],
+                                close=window["close"],
+                                name="BTC/USDT",
+                                showlegend=False,
+                            )
+                        )
+                        is_long = row["direction"] > 0
+                        entry_time = pd.to_datetime(entry_ts, unit="ms", utc=True)
+                        exit_time = pd.to_datetime(exit_ts, unit="ms", utc=True)
+                        chart.add_vrect(
+                            x0=entry_time,
+                            x1=exit_time,
+                            fillcolor="#636efa",
+                            opacity=0.10,
+                            line_width=0,
+                        )
+                        if not pd.isna(row["Prix entrée"]):
+                            chart.add_trace(
+                                go.Scatter(
+                                    x=[entry_time],
+                                    y=[row["Prix entrée"]],
+                                    mode="markers",
+                                    name=f"Entrée {row['Sens']}",
+                                    marker={
+                                        "symbol": "triangle-up" if is_long else "triangle-down",
+                                        "size": 14,
+                                        "color": "#00cc96" if is_long else "#ef553b",
+                                        "line": {"width": 1, "color": "black"},
+                                    },
+                                )
+                            )
+                            chart.add_trace(
+                                go.Scatter(
+                                    x=[exit_time],
+                                    y=[row["Prix sortie"]],
+                                    mode="markers",
+                                    name="Sortie",
+                                    marker={
+                                        "symbol": "x",
+                                        "size": 12,
+                                        "color": "#ab63fa",
+                                        "line": {"width": 1, "color": "black"},
+                                    },
+                                )
+                            )
+                            chart.add_hline(
+                                y=row["Prix entrée"], line_dash="dot", line_color="#7f7f7f"
+                            )
+                            chart.add_hline(
+                                y=row["Prix sortie"],
+                                line_dash="dot",
+                                line_color="#00cc96" if row["ret_net"] > 0 else "#ef553b",
+                            )
+                        chart.update_layout(
+                            height=460,
+                            xaxis_rangeslider_visible=False,
+                            yaxis_title="Prix ($)",
+                            legend={"orientation": "h"},
+                            margin={"t": 20},
+                        )
+                        st.plotly_chart(chart, width="stretch")
+
     with tab_imp:
         with_importances = [m for m in selected if run.importances.get(m)]
         if not with_importances:

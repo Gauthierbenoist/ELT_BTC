@@ -44,6 +44,7 @@ class Dataset:
     holding_bars: pd.Series
     side: pd.Series  # +1/-1 primary signal (meta-labeling); all +1 otherwise
     entry_close: pd.Series  # bar close at decision time (trade entry price)
+    bars: pd.DataFrame  # full resampled OHLCV bars (for charting/inspection)
 
 
 def load_1m_lake(root: Path) -> pd.DataFrame:
@@ -169,4 +170,5 @@ def build_dataset(settings: BenchmarkSettings) -> Dataset:
         holding_bars=holding_bars,
         side=side_out,
         entry_close=entry_close,
+        bars=bars,
     )

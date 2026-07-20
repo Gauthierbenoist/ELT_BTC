@@ -50,3 +50,21 @@ def test_load_run_roundtrip(tmp_path):
     assert len(run.predictions) == 1
     assert run.importances["lightgbm"]["ret_1"] == 10.0
     assert run.calibration == {}  # optional artifact absent
+    assert run.bars is None  # optional artifact absent
+
+
+def test_load_run_with_bars(tmp_path):
+    run_dir = make_run_dir(tmp_path, "run_20260101T000000Z")
+    pd.DataFrame(
+        {
+            "timestamp": [0],
+            "open": [1.0],
+            "high": [2.0],
+            "low": [0.5],
+            "close": [1.5],
+            "volume": [10.0],
+        }
+    ).to_parquet(run_dir / "bars.parquet", index=False)
+    run = load_run(run_dir)
+    assert run.bars is not None
+    assert len(run.bars) == 1

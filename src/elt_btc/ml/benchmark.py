@@ -245,6 +245,8 @@ def main(argv: list[str] | None = None) -> int:
     (run_dir / "metrics.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     folds_frame.to_csv(run_dir / "folds.csv", index=False)
     predictions.to_parquet(run_dir / "predictions.parquet", compression="zstd", index=False)
+    # Full OHLCV bars for the dashboard's candlestick trade inspector.
+    dataset.bars.to_parquet(run_dir / "bars.parquet", compression="zstd", index=False)
     (run_dir / "importances.json").write_text(json.dumps(importances, indent=2), encoding="utf-8")
     calibration = {
         name: calibration_table(
