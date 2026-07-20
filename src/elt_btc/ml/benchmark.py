@@ -42,7 +42,7 @@ from elt_btc.ml.dataset import Dataset, build_dataset
 from elt_btc.ml.metrics import aggregate_folds, calibration_table, evaluate_fold
 from elt_btc.ml.models import build_models
 from elt_btc.ml.splits import PurgedWalkForwardSplit
-from elt_btc.ml.trade_backtest import simulate_trades
+from elt_btc.ml.trade_backtest import simulate_trades, simulate_trades_trailing
 from elt_btc.utils.logging import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -151,6 +151,7 @@ def run_benchmark(
                         "holding_bars": dataset.holding_bars.iloc[test_idx].to_numpy(),
                         "side": side_test,
                         "close": dataset.entry_close.iloc[test_idx].to_numpy(),
+                        "sigma": dataset.sigma.iloc[test_idx].to_numpy(),
                     }
                 )
             )
@@ -200,6 +201,27 @@ def run_benchmark(
                 side=pooled_side if is_meta else None,
             ).metrics,
         }
+        if is_meta:
+            aligned_bars = (
+                dataset.bars.set_index("timestamp")
+                .reindex(pooled["timestamp"].to_numpy())
+                .reset_index()
+            )
+            results[name]["trade_backtest_trailing"] = simulate_trades_trailing(
+                pooled["timestamp"].to_numpy(),
+                pooled_p,
+                pooled_side,
+                aligned_bars["high"].to_numpy(),
+                aligned_bars["low"].to_numpy(),
+                aligned_bars["close"].to_numpy(),
+                pooled["sigma"].to_numpy(),
+                bar_ms=bar_ms,
+                fee_rate=fee_rate,
+                pt_mult=settings.target.pt_mult,
+                sl_mult=settings.target.sl_mult,
+                max_holding=settings.target.max_holding,
+                threshold_band=settings.backtest.threshold_band,
+            ).metrics
 
     report: dict[str, object] = {
         "generated_at": datetime.now(tz=UTC).isoformat(),
@@ -315,6 +337,19 @@ def main(argv: list[str] | None = None) -> int:
             100 * trades["max_drawdown_net"],
             trades["exposure"],
         )
+        trailing = payload.get("trade_backtest_trailing")
+        if trailing:
+            logger.info(
+                "%-14s trailing (v2): %d trades | win %.1f%% | Sharpe net %+.2f | "
+                "ann ret %+.1f%% | maxDD %.1f%% | exposure %.2f",
+                name,
+                int(trailing["n_trades"]),
+                100 * trailing["win_rate"],
+                trailing["sharpe_net"],
+                100 * trailing["ann_return_net"],
+                100 * trailing["max_drawdown_net"],
+                trailing["exposure"],
+            )
     logger.info("Report written to %s", run_dir)
     return 0
 

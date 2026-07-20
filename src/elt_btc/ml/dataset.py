@@ -19,7 +19,7 @@ from elt_btc.candles import OHLCV_COLUMNS, bar_anchor_ms, timeframe_to_ms
 from elt_btc.features.ohlc import build_features
 from elt_btc.features.volume import build_volume_features
 from elt_btc.ml.config import BenchmarkSettings
-from elt_btc.ml.labels import momentum_side, triple_barrier_labels
+from elt_btc.ml.labels import ewma_volatility, momentum_side, triple_barrier_labels
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,7 @@ class Dataset:
     holding_bars: pd.Series
     side: pd.Series  # +1/-1 primary signal (meta-labeling); all +1 otherwise
     entry_close: pd.Series  # bar close at decision time (trade entry price)
+    sigma: pd.Series  # barrier-width volatility at decision time (NaN for next_bar)
     bars: pd.DataFrame  # full resampled OHLCV bars (for charting/inspection)
 
 
@@ -116,7 +117,9 @@ def build_dataset(settings: BenchmarkSettings) -> Dataset:
         features = pd.concat([features, volume_features], axis=1)
 
     side = pd.Series(np.ones(len(bars)), index=bars.index)
+    sigma = pd.Series(np.full(len(bars), np.nan), index=bars.index)
     if settings.target.is_barrier:
+        sigma = ewma_volatility(bars["close"], settings.target.vol_span)
         if settings.target.type == "meta_triple_barrier":
             # Primary signal decides the side; flat/warm-up rows carry no signal.
             side = momentum_side(bars["close"], settings.target.side_momentum_window)
@@ -156,6 +159,7 @@ def build_dataset(settings: BenchmarkSettings) -> Dataset:
     holding_bars = holding.loc[valid].astype("int64").reset_index(drop=True)
     side_out = side.loc[valid].astype("int64").reset_index(drop=True)
     entry_close = bars.loc[valid, "close"].reset_index(drop=True)
+    sigma_out = sigma.loc[valid].reset_index(drop=True)
     logger.info(
         "Dataset ready: %d samples x %d features, up-rate %.4f",
         len(X),
@@ -170,5 +174,6 @@ def build_dataset(settings: BenchmarkSettings) -> Dataset:
         holding_bars=holding_bars,
         side=side_out,
         entry_close=entry_close,
+        sigma=sigma_out,
         bars=bars,
     )

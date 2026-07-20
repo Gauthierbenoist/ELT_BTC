@@ -30,7 +30,7 @@ from elt_btc.ml.backtest import (
     strategy_returns,
 )
 from elt_btc.ml.runs import Run, list_runs, load_run
-from elt_btc.ml.trade_backtest import simulate_trades
+from elt_btc.ml.trade_backtest import simulate_trades, simulate_trades_trailing
 
 MS_PER_YEAR = 365 * 86_400 * 1000
 RUNS_ROOT = Path("outputs/benchmark")
@@ -260,6 +260,24 @@ def main() -> None:
             )
         else:
             bar_ms = timeframe_to_ms(timeframe)
+            trailing_available = (
+                is_meta and "sigma" in run.predictions.columns and run.bars is not None
+            )
+            policy = "Barrières fixes (v1)"
+            if trailing_available:
+                policy = st.radio(
+                    "Politique d'exécution",
+                    ["Barrières fixes (v1)", "Barrières trailing (v2)"],
+                    horizontal=True,
+                    help=(
+                        "v2 : pendant un trade, chaque re-signal du modèle dans le sens de "
+                        "la position recalcule les barrières depuis le prix courant, et "
+                        "chacune ne bouge que dans le sens favorable (TP et SL montent "
+                        "indépendamment pour un long, descendent pour un short)."
+                    ),
+                )
+            use_trailing = policy.endswith("(v2)")
+            target_cfg = run.report["config"].get("target", {})
             trade_rows = {}
             trade_results: dict[str, pd.DataFrame] = {}
             entry_prices: dict[str, pd.Series] = {}
@@ -267,16 +285,39 @@ def main() -> None:
             for name in selected:
                 df = run.predictions.loc[run.predictions["model"] == name]
                 df = df.sort_values("timestamp").reset_index(drop=True)
-                result = simulate_trades(
-                    df["timestamp"].to_numpy(),
-                    df["p_up"].to_numpy(),
-                    df["ret_next"].to_numpy(),
-                    df["holding_bars"].to_numpy(),
-                    bar_ms=bar_ms,
-                    fee_rate=fee_rate,
-                    threshold_band=band,
-                    side=df["side"].to_numpy() if is_meta and "side" in df.columns else None,
-                )
+                if use_trailing:
+                    assert run.bars is not None
+                    aligned = (
+                        run.bars.set_index("timestamp")
+                        .reindex(df["timestamp"].to_numpy())
+                        .reset_index()
+                    )
+                    result = simulate_trades_trailing(
+                        df["timestamp"].to_numpy(),
+                        df["p_up"].to_numpy(),
+                        df["side"].to_numpy(),
+                        aligned["high"].to_numpy(),
+                        aligned["low"].to_numpy(),
+                        aligned["close"].to_numpy(),
+                        df["sigma"].to_numpy(),
+                        bar_ms=bar_ms,
+                        fee_rate=fee_rate,
+                        pt_mult=float(target_cfg.get("pt_mult", 1.0)),
+                        sl_mult=float(target_cfg.get("sl_mult", 1.0)),
+                        max_holding=int(target_cfg.get("max_holding", 42)),
+                        threshold_band=band,
+                    )
+                else:
+                    result = simulate_trades(
+                        df["timestamp"].to_numpy(),
+                        df["p_up"].to_numpy(),
+                        df["ret_next"].to_numpy(),
+                        df["holding_bars"].to_numpy(),
+                        bar_ms=bar_ms,
+                        fee_rate=fee_rate,
+                        threshold_band=band,
+                        side=df["side"].to_numpy() if is_meta and "side" in df.columns else None,
+                    )
                 trade_results[name] = result.trades
                 if "close" in df.columns:
                     entry_prices[name] = df.set_index("timestamp")["close"]
@@ -344,7 +385,10 @@ def main() -> None:
                 detail["Sortie"] = pd.to_datetime(detail["exit_ts"], unit="ms", utc=True)
                 detail["Sens"] = np.where(detail["direction"] > 0, "Long", "Short")
                 detail["Résultat"] = np.where(detail["ret_net"] > 0, "Gagnant", "Perdant")
-                if detail_model in entry_prices:
+                if "entry_price" in detail.columns:  # v2: prices recorded directly
+                    detail["Prix entrée"] = detail["entry_price"]
+                    detail["Prix sortie"] = detail["exit_price"]
+                elif detail_model in entry_prices:
                     detail["Prix entrée"] = (
                         detail["entry_ts"].map(entry_prices[detail_model]).astype(float)
                     )
@@ -380,10 +424,14 @@ def main() -> None:
                     "ret_net",
                     "Résultat",
                 ]
+                if "exit_reason" in detail.columns:  # v2 extras
+                    display_cols += ["exit_reason", "n_updates"]
                 st.dataframe(
                     detail[display_cols].reset_index(drop=True),
                     width="stretch",
                     column_config={
+                        "exit_reason": st.column_config.TextColumn("Sortie via"),
+                        "n_updates": st.column_config.NumberColumn("MàJ barrières", format="%.0f"),
                         "Entrée": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
                         "Sortie": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
                         "p_up": st.column_config.NumberColumn("p ML", format="%.3f"),
