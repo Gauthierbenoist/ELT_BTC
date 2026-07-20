@@ -266,23 +266,21 @@ def main() -> None:
             )
         else:
             bar_ms = timeframe_to_ms(timeframe)
-            trailing_available = (
-                is_meta and "sigma" in run.predictions.columns and run.bars is not None
+            # The execution policy is a property of the run's configuration.
+            configured_trailing = (
+                run.report["config"].get("backtest", {}).get("policy") == "trailing"
             )
-            policy = "Barrières fixes (v1)"
-            if trailing_available:
-                policy = st.radio(
-                    "Politique d'exécution",
-                    ["Barrières fixes (v1)", "Barrières trailing (v2)"],
-                    horizontal=True,
-                    help=(
-                        "v2 : pendant un trade, chaque re-signal du modèle dans le sens de "
-                        "la position recalcule les barrières depuis le prix courant, et "
-                        "chacune ne bouge que dans le sens favorable (TP et SL montent "
-                        "indépendamment pour un long, descendent pour un short)."
-                    ),
+            use_trailing = (
+                configured_trailing
+                and is_meta
+                and "sigma" in run.predictions.columns
+                and run.bars is not None
+            )
+            if configured_trailing and not use_trailing:
+                st.warning(
+                    "Politique trailing configurée mais artefacts manquants "
+                    "(sigma/bars) : repli sur les barrières fixes."
                 )
-            use_trailing = policy.endswith("(v2)")
             target_cfg = run.report["config"].get("target", {})
             trade_rows = {}
             trade_results: dict[str, pd.DataFrame] = {}
@@ -349,10 +347,16 @@ def main() -> None:
                             line={"color": colors[name], "shape": "hv"},
                         )
                     )
+            policy_label = (
+                "barrières **trailing** (TP/SL ratchetés à chaque re-signal du modèle)"
+                if use_trailing
+                else "barrières **fixes** (posées à l'entrée)"
+            )
             st.caption(
-                "Politique exécutable : un seul trade à la fois, entré si le signal sort de la "
-                "zone neutre, tenu jusqu'à sa sortie (barrière ou bougie suivante) ; frais "
-                "comptés à l'aller-retour. Les signaux pendant un trade ouvert sont ignorés."
+                f"Politique exécutable de ce run : {policy_label} — un seul trade à la fois, "
+                "entré si le signal sort de la zone neutre, frais comptés à l'aller-retour. "
+                "Les signaux pendant un trade ouvert sont ignorés (ou servent aux mises à "
+                "jour de barrières en trailing)."
             )
             st.dataframe(
                 pd.DataFrame(trade_rows).T,

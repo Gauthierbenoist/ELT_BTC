@@ -35,6 +35,9 @@ class FeatureSettings(BaseModel):
     channel_windows: list[int] = [24, 168]
     rsi_period: int = Field(default=14, gt=1)
     volume_windows: list[int] = []
+    # 0 disables; N adds return-distances to the last confirmed pivot
+    # high/low (pivot = extreme of N bars on each side).
+    pivot_window: int = Field(default=0, ge=0)
 
 
 class TargetSettings(BaseModel):
@@ -82,10 +85,16 @@ class ModelSettings(BaseModel):
 
 
 class BacktestSettings(BaseModel):
-    """Evaluation-only backtest parameters (see ``elt_btc.ml.backtest``)."""
+    """Evaluation-only backtest parameters (see ``elt_btc.ml.backtest``).
+
+    ``policy`` selects the trade-level execution: ``fixed`` holds each
+    trade to its entry barriers; ``trailing`` ratchets the barriers on
+    every model re-signal (meta targets only).
+    """
 
     fee_bps: float = Field(default=10.0, ge=0)
     threshold_band: float = Field(default=0.0, ge=0, lt=0.5)
+    policy: Literal["fixed", "trailing"] = "fixed"
 
 
 class BenchmarkSettings(BaseModel):
@@ -111,6 +120,11 @@ class BenchmarkSettings(BaseModel):
                 f"split.purge ({self.split.purge}) must be >= the label horizon "
                 f"({self.target.horizon_bars} bars for target type "
                 f"{self.target.type!r}): training labels would overlap the test window"
+            )
+        if self.backtest.policy == "trailing" and self.target.type != "meta_triple_barrier":
+            raise ValueError(
+                "backtest.policy 'trailing' requires target.type 'meta_triple_barrier' "
+                "(the barrier ratchet is driven by the sided model re-signals)"
             )
         return self
 

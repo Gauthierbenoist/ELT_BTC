@@ -189,25 +189,15 @@ def run_benchmark(
                 bars_per_year=bars_per_year,
                 threshold_band=settings.backtest.threshold_band,
             ),
-            # Executable policy: one trade at a time, held to its exit.
-            "trade_backtest": simulate_trades(
-                pooled["timestamp"].to_numpy(),
-                pooled_p,
-                pooled_ret,
-                pooled["holding_bars"].to_numpy(),
-                bar_ms=bar_ms,
-                fee_rate=fee_rate,
-                threshold_band=settings.backtest.threshold_band,
-                side=pooled_side if is_meta else None,
-            ).metrics,
         }
-        if is_meta:
+        # Executable policy (one trade at a time), per the run's configuration.
+        if settings.backtest.policy == "trailing":
             aligned_bars = (
                 dataset.bars.set_index("timestamp")
                 .reindex(pooled["timestamp"].to_numpy())
                 .reset_index()
             )
-            results[name]["trade_backtest_trailing"] = simulate_trades_trailing(
+            results[name]["trade_backtest"] = simulate_trades_trailing(
                 pooled["timestamp"].to_numpy(),
                 pooled_p,
                 pooled_side,
@@ -221,6 +211,17 @@ def run_benchmark(
                 sl_mult=settings.target.sl_mult,
                 max_holding=settings.target.max_holding,
                 threshold_band=settings.backtest.threshold_band,
+            ).metrics
+        else:
+            results[name]["trade_backtest"] = simulate_trades(
+                pooled["timestamp"].to_numpy(),
+                pooled_p,
+                pooled_ret,
+                pooled["holding_bars"].to_numpy(),
+                bar_ms=bar_ms,
+                fee_rate=fee_rate,
+                threshold_band=settings.backtest.threshold_band,
+                side=pooled_side if is_meta else None,
             ).metrics
 
     report: dict[str, object] = {
@@ -327,9 +328,10 @@ def main(argv: list[str] | None = None) -> int:
             pooled["turnover"],
         )
         logger.info(
-            "%-14s trade-level: %d trades | win %.1f%% | Sharpe net %+.2f | "
+            "%-14s trade-level (%s): %d trades | win %.1f%% | Sharpe net %+.2f | "
             "ann ret %+.1f%% | maxDD %.1f%% | exposure %.2f",
             name,
+            settings.backtest.policy,
             int(trades["n_trades"]),
             100 * trades["win_rate"],
             trades["sharpe_net"],
@@ -337,19 +339,6 @@ def main(argv: list[str] | None = None) -> int:
             100 * trades["max_drawdown_net"],
             trades["exposure"],
         )
-        trailing = payload.get("trade_backtest_trailing")
-        if trailing:
-            logger.info(
-                "%-14s trailing (v2): %d trades | win %.1f%% | Sharpe net %+.2f | "
-                "ann ret %+.1f%% | maxDD %.1f%% | exposure %.2f",
-                name,
-                int(trailing["n_trades"]),
-                100 * trailing["win_rate"],
-                trailing["sharpe_net"],
-                100 * trailing["ann_return_net"],
-                100 * trailing["max_drawdown_net"],
-                trailing["exposure"],
-            )
     logger.info("Report written to %s", run_dir)
     return 0
 

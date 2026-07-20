@@ -131,3 +131,19 @@ def test_config_rejects_purge_smaller_than_label_horizon():
         )
     # Same purge is fine for the 1-bar next_bar target.
     BenchmarkSettings(target=TargetSettings(type="next_bar"), split=SplitSettings(purge=24))
+
+
+def test_config_rejects_trailing_policy_without_meta_target():
+    from elt_btc.ml.config import BacktestSettings
+
+    with pytest.raises(ValidationError, match="trailing"):
+        BenchmarkSettings(
+            target=TargetSettings(type="triple_barrier", max_holding=42),
+            split=SplitSettings(purge=48),
+            backtest=BacktestSettings(policy="trailing"),
+        )
+    BenchmarkSettings(
+        target=TargetSettings(type="meta_triple_barrier", max_holding=42),
+        split=SplitSettings(purge=48),
+        backtest=BacktestSettings(policy="trailing"),
+    )

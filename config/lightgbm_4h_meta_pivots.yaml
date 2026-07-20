@@ -1,0 +1,39 @@
+# lightgbm_4h_meta.yaml + two pivot-distance features: return-distance
+# from the current close to the last CONFIRMED pivot high and pivot low
+# (pivot = extreme of the highs/lows over 5 bars on each side; a pivot is
+# only knowable 5 bars after it prints — causality preserved).
+dataset:
+  parquet_root: data/raw/1m
+  timeframe: 4h
+  min_minutes_per_bar: 220
+
+features:
+  momentum_windows: [3, 6, 12, 24, 42, 84]
+  vol_windows: [6, 18, 42]
+  range_vol_windows: [6, 42]
+  channel_windows: [18, 84]
+  rsi_period: 14
+  volume_windows: [6, 42]
+  pivot_window: 5    # adds pivot_high_dist_5 and pivot_low_dist_5
+
+target:
+  type: meta_triple_barrier
+  side_momentum_window: 12
+  vol_span: 42
+  pt_mult: 3.0
+  sl_mult: 1.0
+  max_holding: 42
+
+split:
+  n_splits: 8
+  test_size: 1095
+  min_train_size: 6570
+  purge: 48
+
+models:
+  seed: 42
+
+backtest:
+  fee_bps: 10.0
+  threshold_band: 0.0
+  policy: fixed      # same policy as run_1 to isolate the feature effect

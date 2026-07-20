@@ -57,6 +57,46 @@ def garman_klass_vol(bars: pd.DataFrame, window: int) -> pd.Series:
     return pd.Series(np.sqrt(variance.clip(lower=0.0)), index=bars.index)
 
 
+def pivot_distances(bars: pd.DataFrame, window: int) -> pd.DataFrame:
+    """Return-distance to the most recent *confirmed* pivot high and low.
+
+    A pivot high at bar ``j`` is a bar whose **high** is the maximum of the
+    ``window`` bars on each side (pivot low: minimum of the lows). Such a
+    pivot is only knowable ``window`` bars later — the right side of the
+    window must have printed — so the feature at ``t`` uses the latest
+    pivot confirmed by ``t`` (detection shifted by ``window`` bars, then
+    forward-filled). Causal by construction; NaN until the first pivot is
+    confirmed.
+
+    Distances are simple returns from the current close to the pivot
+    price: positive toward a pivot high above (e.g. +3%), negative toward
+    a pivot low below (e.g. -2%).
+    """
+    high, low, close = bars["high"], bars["low"], bars["close"]
+    # Strict extremum on both sides (a flat plateau is not a pivot).
+    left_high = high.rolling(window).max().shift(1)  # max of the `window` bars before j
+    right_high = high.rolling(window).max().shift(-window)  # max of the `window` bars after j
+    is_pivot_high = (high > left_high) & (high > right_high)
+    left_low = low.rolling(window).min().shift(1)
+    right_low = low.rolling(window).min().shift(-window)
+    is_pivot_low = (low < left_low) & (low < right_low)
+    last_pivot_high = (
+        pd.Series(np.where(is_pivot_high, high, np.nan), index=bars.index)
+        .shift(window)  # a pivot at j becomes known at j + window
+        .ffill()
+    )
+    last_pivot_low = (
+        pd.Series(np.where(is_pivot_low, low, np.nan), index=bars.index).shift(window).ffill()
+    )
+    return pd.DataFrame(
+        {
+            f"pivot_high_dist_{window}": last_pivot_high / close - 1.0,
+            f"pivot_low_dist_{window}": last_pivot_low / close - 1.0,
+        },
+        index=bars.index,
+    )
+
+
 def build_features(bars: pd.DataFrame, settings: FeatureSettings) -> pd.DataFrame:
     """Assemble the full causal feature matrix (same index as ``bars``).
 
@@ -97,6 +137,10 @@ def build_features(bars: pd.DataFrame, settings: FeatureSettings) -> pd.DataFram
 
     out["gap"] = open_ / close.shift(1) - 1.0
     out[f"rsi_{settings.rsi_period}"] = rsi(close, settings.rsi_period)
+
+    if settings.pivot_window > 0:
+        for name, series in pivot_distances(bars, settings.pivot_window).items():
+            out[str(name)] = series
 
     # Calendar features: derived from the bar open time only (no external data).
     hour = (bars["timestamp"] // _HOUR_MS) % 24

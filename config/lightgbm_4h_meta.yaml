@@ -36,3 +36,4 @@ models:
 backtest:
   fee_bps: 10.0
   threshold_band: 0.0
+  policy: fixed      # barriers set at entry, held to exit
