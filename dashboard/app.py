@@ -157,6 +157,12 @@ def main() -> None:
     )
     colors[BUY_HOLD] = "#7f7f7f"
 
+    st.caption(
+        "⚠️ Tableau = politique **par bougie** (position à chaque bougie selon p) : "
+        "utile pour comparer les modèles, mais il sous-compte les frais pour les "
+        "labels à barrières. La politique **exécutable** (un trade à la fois, frais "
+        "à l'aller-retour) est dans l'onglet *Trades* — c'est elle qui fait foi."
+    )
     table = pd.DataFrame({name: data["metrics"] for name, data in computed.items()}).T
     st.dataframe(
         table,
