@@ -21,13 +21,19 @@ class DatasetSettings(BaseModel):
 
 
 class FeatureSettings(BaseModel):
-    """Rolling-window lengths (in bars) for the OHLC feature set."""
+    """Rolling-window lengths (in bars) for the feature set.
+
+    ``volume_windows`` empty (the default) keeps the feature set OHLC-only;
+    non-empty adds the volume features from
+    :mod:`elt_btc.features.volume`.
+    """
 
     momentum_windows: list[int] = [3, 6, 12, 24, 72, 168]
     vol_windows: list[int] = [24, 72, 168]
     range_vol_windows: list[int] = [24, 168]
     channel_windows: list[int] = [24, 168]
     rsi_period: int = Field(default=14, gt=1)
+    volume_windows: list[int] = []
 
 
 class SplitSettings(BaseModel):

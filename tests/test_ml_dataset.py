@@ -42,6 +42,7 @@ def test_resample_ohlc_aggregation():
     assert first["close"] == 60.0  # last minute of the hour
     assert first["high"] == 60.5
     assert first["low"] == 0.5
+    assert first["volume"] == 60.0  # sum of the hour's 1m volumes (1.0 each)
 
 
 def test_resample_drops_gappy_bars():

@@ -17,11 +17,12 @@ import pandas as pd
 
 from elt_btc.candles import OHLCV_COLUMNS, timeframe_to_ms
 from elt_btc.features.ohlc import build_features
+from elt_btc.features.volume import build_volume_features
 from elt_btc.ml.config import BenchmarkSettings
 
 logger = logging.getLogger(__name__)
 
-_BAR_COLUMNS = ["timestamp", "open", "high", "low", "close"]
+_BAR_COLUMNS = ["timestamp", "open", "high", "low", "close", "volume"]
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,7 @@ def resample_to_bars(df_1m: pd.DataFrame, timeframe: str, min_minutes_per_bar: i
         high=("high", "max"),
         low=("low", "min"),
         close=("close", "last"),
+        volume=("volume", "sum"),
         n_candles=("close", "size"),
     )
     bars.index.name = "timestamp"
@@ -100,6 +102,9 @@ def build_dataset(settings: BenchmarkSettings) -> Dataset:
     logger.info("Resampled into %d %s bars", len(bars), cfg.timeframe)
 
     features = build_features(bars, settings.features)
+    if settings.features.volume_windows:
+        volume_features = build_volume_features(bars, settings.features.volume_windows)
+        features = pd.concat([features, volume_features], axis=1)
     target = make_target(bars["close"])
     next_return = make_next_return(bars["close"])
 

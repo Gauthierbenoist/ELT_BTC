@@ -1,0 +1,28 @@
+# LightGBM working configuration: OHLC features + volume features.
+# Same protocol as config/benchmark.yaml (the OHLC-only reference floor);
+# only the feature set differs.
+dataset:
+  parquet_root: data/raw/1m
+  timeframe: 1h
+  min_minutes_per_bar: 45
+
+features:
+  momentum_windows: [3, 6, 12, 24, 72, 168]
+  vol_windows: [24, 72, 168]
+  range_vol_windows: [24, 168]
+  channel_windows: [24, 168]
+  rsi_period: 14
+  volume_windows: [24, 168]   # adds volume_rel_* and volume_z_* features
+
+split:
+  n_splits: 8
+  test_size: 4380
+  min_train_size: 26280
+  purge: 24
+
+models:
+  seed: 42
+
+backtest:
+  fee_bps: 10.0
+  threshold_band: 0.0

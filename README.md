@@ -109,9 +109,20 @@ cross-validation**. This is the reference floor every future model must
 beat under the same protocol.
 
 ```bash
-uv run python -m elt_btc.ml.benchmark                      # full zoo
+uv run python -m elt_btc.ml.benchmark                      # full zoo, OHLC-only reference
 uv run python -m elt_btc.ml.benchmark --models logreg      # subset
+uv run python -m elt_btc.ml.benchmark --name 1_benchmark   # named run directory
+# working config: LightGBM with volume features added
+uv run python -m elt_btc.ml.benchmark --config config/lightgbm_volume.yaml --models lightgbm
 ```
+
+Two configs are tracked: [benchmark.yaml](config/benchmark.yaml) (OHLC-only
+protocol — the frozen reference floor, `run_1_benchmark`) and
+[lightgbm_volume.yaml](config/lightgbm_volume.yaml) (adds causal volume
+features `volume_rel_*` / `volume_z_*` via `features.volume_windows`).
+Empirical note: on this protocol the volume features did **not** improve
+LightGBM (AUC 0.554 vs 0.558 OHLC-only) — kept as the working baseline for
+further feature work.
 
 Configuration in [config/benchmark.yaml](config/benchmark.yaml). Each run
 writes a self-contained, reproducible directory `outputs/benchmark/run_<UTC>/`:

@@ -195,6 +195,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, default=None, help="Path to benchmark.yaml")
     parser.add_argument("--models", default=None, help="Comma-separated subset of models to run")
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/benchmark"))
+    parser.add_argument(
+        "--name",
+        default=None,
+        help="Run directory name suffix (run_<name>); defaults to a UTC timestamp",
+    )
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args(argv)
 
@@ -202,7 +207,8 @@ def main(argv: list[str] | None = None) -> int:
     settings = load_benchmark_settings(args.config)
     np.random.seed(settings.models.seed)
 
-    run_dir = args.output_dir / datetime.now(tz=UTC).strftime("run_%Y%m%dT%H%M%SZ")
+    run_suffix = args.name or datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+    run_dir = args.output_dir / f"run_{run_suffix}"
     models_dir = run_dir / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
 
