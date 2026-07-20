@@ -1,0 +1,28 @@
+# LightGBM 4h configuration. Windows are in *4h* bars.
+# ~19,400 usable samples: same fold layout as the 1h protocol
+# (8 x ~6 months testing the last 4 years).
+dataset:
+  parquet_root: data/raw/1m
+  timeframe: 4h
+  min_minutes_per_bar: 220  # of 240 minutes per bar; tolerates known gaps
+
+features:
+  momentum_windows: [3, 6, 12, 24, 42, 84]  # 12h .. 2 weeks
+  vol_windows: [6, 18, 42]
+  range_vol_windows: [6, 42]
+  channel_windows: [18, 84]
+  rsi_period: 14
+  volume_windows: [6, 42]
+
+split:
+  n_splits: 8
+  test_size: 1095      # ~6 months of 4h bars per fold
+  min_train_size: 6570 # ~3 years before the first test fold
+  purge: 6
+
+models:
+  seed: 42
+
+backtest:
+  fee_bps: 10.0
+  threshold_band: 0.0
