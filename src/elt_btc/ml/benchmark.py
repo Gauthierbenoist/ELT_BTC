@@ -38,6 +38,7 @@ from elt_btc.ml.dataset import Dataset, build_dataset
 from elt_btc.ml.metrics import aggregate_folds, calibration_table, evaluate_fold
 from elt_btc.ml.models import build_models
 from elt_btc.ml.splits import PurgedWalkForwardSplit
+from elt_btc.ml.trade_backtest import simulate_trades
 from elt_btc.utils.logging import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -131,6 +132,7 @@ def run_benchmark(
                         "y": y_test.to_numpy(),
                         "p_up": p_up,
                         "ret_next": ret_test,
+                        "holding_bars": dataset.holding_bars.iloc[test_idx].to_numpy(),
                     }
                 )
             )
@@ -141,9 +143,10 @@ def run_benchmark(
                 importances[name] = _extract_importances(name, model, list(dataset.X.columns))
 
     predictions = pd.concat(prediction_frames, ignore_index=True)
+    bar_ms = timeframe_to_ms(settings.dataset.timeframe)
     results: dict[str, dict[str, object]] = {}
     for name in names:
-        pooled = predictions.loc[predictions["model"] == name]
+        pooled = predictions.loc[predictions["model"] == name].sort_values("timestamp")
         results[name] = {
             "folds": per_model_folds[name],
             "aggregate": aggregate_folds(per_model_folds[name]),
@@ -154,6 +157,16 @@ def run_benchmark(
                 bars_per_year=bars_per_year,
                 threshold_band=settings.backtest.threshold_band,
             ),
+            # Executable policy: one trade at a time, held to its exit.
+            "trade_backtest": simulate_trades(
+                pooled["timestamp"].to_numpy(),
+                pooled["p_up"].to_numpy(),
+                pooled["ret_next"].to_numpy(),
+                pooled["holding_bars"].to_numpy(),
+                bar_ms=bar_ms,
+                fee_rate=fee_rate,
+                threshold_band=settings.backtest.threshold_band,
+            ).metrics,
         }
 
     report: dict[str, object] = {
@@ -236,6 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     for name, payload in results.items():
         agg = payload["aggregate"]
         pooled = payload["pooled_backtest"]
+        trades = payload["trade_backtest"]
         logger.info(
             "%-14s AUC %.4f±%.4f | acc %.4f | Sharpe gross %+.2f net %+.2f | "
             "maxDD %.1f%% | turnover %.3f",
@@ -247,6 +261,17 @@ def main(argv: list[str] | None = None) -> int:
             pooled["sharpe_net"],
             100 * pooled["max_drawdown_net"],
             pooled["turnover"],
+        )
+        logger.info(
+            "%-14s trade-level: %d trades | win %.1f%% | Sharpe net %+.2f | "
+            "ann ret %+.1f%% | maxDD %.1f%% | exposure %.2f",
+            name,
+            int(trades["n_trades"]),
+            100 * trades["win_rate"],
+            trades["sharpe_net"],
+            100 * trades["ann_return_net"],
+            100 * trades["max_drawdown_net"],
+            trades["exposure"],
         )
     logger.info("Report written to %s", run_dir)
     return 0

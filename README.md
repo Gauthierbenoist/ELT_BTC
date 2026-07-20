@@ -129,10 +129,21 @@ labels** (López de Prado) on 4h bars: profit-take/stop-loss at ±2 EWMA
 sigmas, vertical barrier at 42 bars. Because such a label is only resolved
 up to `max_holding` bars after its decision time, the config loader
 **rejects any `split.purge < max_holding`** — otherwise training labels
-would overlap the test window through open trades. Caveat: for
-triple-barrier runs the backtest metrics read as *per-signal overlapping
-trade statistics*, not a portfolio equity curve (trades overlap; a proper
-trade-level backtest is future work).
+would overlap the test window through open trades.
+
+Two backtest layers coexist and answer different questions:
+
+- `pooled_backtest` (per-signal): "do the signaled virtual trades win on
+  average?" — overlapping trades, fees under-counted for barrier labels;
+- `trade_backtest` ([ml/trade_backtest.py](src/elt_btc/ml/trade_backtest.py),
+  also the dashboard's *Trades* tab): an **executable policy** — one trade
+  at a time, entered when the signal leaves the neutral band, held to its
+  barrier exit, round-trip fees. This is the number that matters.
+
+Reference lesson from `run_6`: per-signal Sharpe net +0.91 but the
+executable policy loses (~1,600 trades/4y at 20 bps round trip, Sharpe net
+−1.35; still negative at every neutral band up to ±0.15). The per-signal
+statistic flatters barrier labels; always check the trade-level tab.
 
 A weekly variant is tracked in
 [lightgbm_weekly.yaml](config/lightgbm_weekly.yaml) (Monday-anchored `1w`

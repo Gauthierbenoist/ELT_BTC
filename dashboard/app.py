@@ -25,6 +25,7 @@ from sklearn.metrics import roc_auc_score
 from elt_btc.candles import timeframe_to_ms
 from elt_btc.ml.backtest import max_drawdown, sharpe_ratio, strategy_returns
 from elt_btc.ml.runs import Run, list_runs, load_run
+from elt_btc.ml.trade_backtest import simulate_trades
 
 MS_PER_YEAR = 365 * 86_400 * 1000
 RUNS_ROOT = Path("outputs/benchmark")
@@ -144,8 +145,8 @@ def main() -> None:
         },
     )
 
-    tab_equity, tab_dd, tab_dist, tab_imp, tab_cal = st.tabs(
-        ["Équité", "Drawdown", "Distribution", "Importances", "Calibration"]
+    tab_equity, tab_dd, tab_dist, tab_trades, tab_imp, tab_cal = st.tabs(
+        ["Équité", "Drawdown", "Distribution", "Trades", "Importances", "Calibration"]
     )
 
     with tab_equity:
@@ -219,6 +220,79 @@ def main() -> None:
         )
         st.plotly_chart(fig, width="stretch")
         st.dataframe(pd.DataFrame(stats_rows).T.style.format("{:.4f}"), width="stretch")
+
+    with tab_trades:
+        if "holding_bars" not in run.predictions.columns:
+            st.info(
+                "Ce run ne contient pas la colonne holding_bars "
+                "(régénérez-le avec une version récente du benchmark)."
+            )
+        else:
+            bar_ms = timeframe_to_ms(timeframe)
+            trade_rows = {}
+            fig = go.Figure()
+            for name in selected:
+                df = run.predictions.loc[run.predictions["model"] == name]
+                df = df.sort_values("timestamp").reset_index(drop=True)
+                result = simulate_trades(
+                    df["timestamp"].to_numpy(),
+                    df["p_up"].to_numpy(),
+                    df["ret_next"].to_numpy(),
+                    df["holding_bars"].to_numpy(),
+                    bar_ms=bar_ms,
+                    fee_rate=fee_rate,
+                    threshold_band=band,
+                )
+                m = result.metrics
+                trade_rows[name] = {
+                    "Nb trades": m["n_trades"],
+                    "Trades/an": m["trades_per_year"],
+                    "Win rate": m["win_rate"],
+                    "Rdt moyen/trade": m["avg_ret_net"],
+                    "Rdt annuel net": m["ann_return_net"],
+                    "Sharpe net": m["sharpe_net"],
+                    "Max drawdown": m["max_drawdown_net"],
+                    "Exposition": m["exposure"],
+                    "Holding moyen (bougies)": m["avg_holding_bars"],
+                }
+                if len(result.trades):
+                    fig.add_trace(
+                        go.Scattergl(
+                            x=pd.to_datetime(result.trades["entry_ts"], unit="ms", utc=True),
+                            y=np.cumprod(1.0 + result.trades["ret_net"].to_numpy()),
+                            name=name,
+                            mode="lines",
+                            line={"color": colors[name], "shape": "hv"},
+                        )
+                    )
+            st.caption(
+                "Politique exécutable : un seul trade à la fois, entré si le signal sort de la "
+                "zone neutre, tenu jusqu'à sa sortie (barrière ou bougie suivante) ; frais "
+                "comptés à l'aller-retour. Les signaux pendant un trade ouvert sont ignorés."
+            )
+            st.dataframe(
+                pd.DataFrame(trade_rows).T,
+                width="stretch",
+                column_config={
+                    "Nb trades": st.column_config.NumberColumn(format="%.0f"),
+                    "Trades/an": st.column_config.NumberColumn(format="%.0f"),
+                    "Win rate": st.column_config.NumberColumn(format="%.4f"),
+                    "Rdt moyen/trade": st.column_config.NumberColumn(format="percent"),
+                    "Rdt annuel net": st.column_config.NumberColumn(format="percent"),
+                    "Sharpe net": st.column_config.NumberColumn(format="%.2f"),
+                    "Max drawdown": st.column_config.NumberColumn(format="percent"),
+                    "Exposition": st.column_config.NumberColumn(format="%.2f"),
+                    "Holding moyen (bougies)": st.column_config.NumberColumn(format="%.1f"),
+                },
+            )
+            fig.update_layout(
+                height=440,
+                hovermode="x unified",
+                yaxis_title="Équité par trade (base 1)",
+                yaxis_type="log" if log_scale else "linear",
+                legend={"orientation": "h"},
+            )
+            st.plotly_chart(fig, width="stretch")
 
     with tab_imp:
         with_importances = [m for m in selected if run.importances.get(m)]

@@ -41,6 +41,7 @@ class Dataset:
     y: pd.Series
     timestamps: pd.Series
     ret_next: pd.Series
+    holding_bars: pd.Series
 
 
 def load_1m_lake(root: Path) -> pd.DataFrame:
@@ -121,6 +122,7 @@ def build_dataset(settings: BenchmarkSettings) -> Dataset:
         )
         target = tb["label"]
         next_return = tb["ret_trade"]
+        holding = tb["holding_bars"]
         valid_labels = tb["holding_bars"].notna()
         logger.info(
             "Triple-barrier labels: mean holding %.1f bars, %.1f%% vertical exits",
@@ -131,16 +133,18 @@ def build_dataset(settings: BenchmarkSettings) -> Dataset:
     else:
         target = make_target(bars["close"])
         next_return = make_next_return(bars["close"])
+        holding = pd.Series(np.ones(len(bars)), index=bars.index)
 
     valid = features.notna().all(axis=1) & target.notna()
     X = features.loc[valid].reset_index(drop=True)
     y = target.loc[valid].astype("int64").reset_index(drop=True)
     timestamps = bars.loc[valid, "timestamp"].reset_index(drop=True)
     ret_next = next_return.loc[valid].reset_index(drop=True)
+    holding_bars = holding.loc[valid].astype("int64").reset_index(drop=True)
     logger.info(
         "Dataset ready: %d samples x %d features, up-rate %.4f",
         len(X),
         X.shape[1],
         float(y.mean()),
     )
-    return Dataset(X=X, y=y, timestamps=timestamps, ret_next=ret_next)
+    return Dataset(X=X, y=y, timestamps=timestamps, ret_next=ret_next, holding_bars=holding_bars)
