@@ -32,6 +32,17 @@ def ewma_volatility(close: pd.Series, span: int) -> pd.Series:
     return log_returns.ewm(span=span, min_periods=span).std()
 
 
+def momentum_side(close: pd.Series, window: int) -> pd.Series:
+    """Primary directional signal: sign of the trailing ``window``-bar return.
+
+    Causal (uses closes up to ``t`` only). Returns +1/-1, 0 on an exactly
+    flat window and NaN during warm-up — callers must treat 0/NaN rows as
+    "no signal".
+    """
+    trailing = pd.Series(np.log(close / close.shift(window)), index=close.index)
+    return pd.Series(np.sign(trailing), index=close.index)
+
+
 def triple_barrier_labels(
     bars: pd.DataFrame,
     *,
@@ -40,18 +51,29 @@ def triple_barrier_labels(
     sl_mult: float,
     max_holding: int,
     volatility: pd.Series | None = None,
+    side: pd.Series | None = None,
 ) -> pd.DataFrame:
-    """Label every bar with its first-touched barrier.
+    """Label every bar with the outcome of its (possibly sided) virtual trade.
 
-    Returns a frame indexed like ``bars`` with columns ``label`` (1/0),
-    ``ret_trade`` (simple return of the virtual trade, exit at the barrier
-    price or at the vertical-barrier close) and ``holding_bars``. Rows are
-    NaN when the volatility is not yet defined or when the vertical barrier
-    falls beyond the available data (labels there are unknowable).
+    Without ``side`` (or with side +1) the trade is long: profit-take at
+    ``+pt_mult * sigma``, stop-loss at ``-sl_mult * sigma``. With side -1
+    the barriers are set **in the trade's direction** (meta-labeling):
+    profit-take ``pt_mult`` sigmas *below* the entry, stop-loss ``sl_mult``
+    sigmas above — the asymmetry follows the trade, it is never inverted.
+
+    Returns a frame indexed like ``bars`` with ``label`` (1 = the trade
+    wins, i.e. its profit-take is touched first; vertical exits take the
+    sign of the side-adjusted return), ``ret_trade`` (the *trade's* simple
+    return: ``side * (exit / entry - 1)``, exit at the barrier price) and
+    ``holding_bars``. Rows are NaN when the volatility or side is undefined
+    or the vertical barrier falls beyond the data.
+
+    Same-bar double touches resolve to the stop-loss (conservative).
 
     Args:
         volatility: Optional causal per-bar volatility overriding the EWMA
             estimate — used by tests to pin the barriers exactly.
+        side: Optional +1/-1 primary signal per bar; 0/NaN rows get no label.
     """
     close = bars["close"].to_numpy(dtype=float)
     high = bars["high"].to_numpy(dtype=float)
@@ -59,31 +81,47 @@ def triple_barrier_labels(
     if volatility is None:
         volatility = ewma_volatility(bars["close"], vol_span)
     sigma = volatility.to_numpy(dtype=float)
+    sides = np.ones(len(bars)) if side is None else side.to_numpy(dtype=float)
 
     n = len(bars)
     label = np.full(n, np.nan)
     ret_trade = np.full(n, np.nan)
     holding = np.full(n, np.nan)
-    upper = close * (1.0 + pt_mult * sigma)
-    lower = close * (1.0 - sl_mult * sigma)
+    # Barrier distances follow the trade direction: the profit-take always
+    # sits pt_mult sigmas along the side, the stop sl_mult sigmas against it.
+    up_mult = np.where(sides < 0, sl_mult, pt_mult)
+    down_mult = np.where(sides < 0, pt_mult, sl_mult)
+    barrier_up = close * (1.0 + up_mult * sigma)
+    barrier_down = close * (1.0 - down_mult * sigma)
 
     for t in range(n):
-        if not np.isfinite(sigma[t]) or sigma[t] <= 0 or t + max_holding >= n:
+        s = sides[t]
+        if (
+            not np.isfinite(sigma[t])
+            or sigma[t] <= 0
+            or not np.isfinite(s)
+            or s == 0
+            or t + max_holding >= n
+        ):
             continue
         for h in range(1, max_holding + 1):
             i = t + h
-            if low[i] <= lower[t]:  # stop-loss first on same-bar ambiguity
-                label[t] = 0.0
-                ret_trade[t] = lower[t] / close[t] - 1.0
-                holding[t] = h
-                break
-            if high[i] >= upper[t]:
-                label[t] = 1.0
-                ret_trade[t] = upper[t] / close[t] - 1.0
-                holding[t] = h
-                break
-        else:  # vertical barrier: sign of the realized return
-            final_return = close[t + max_holding] / close[t] - 1.0
+            hit_up = high[i] >= barrier_up[t]
+            hit_down = low[i] <= barrier_down[t]
+            if not (hit_up or hit_down):
+                continue
+            # Stop-loss checked first on same-bar ambiguity (conservative):
+            # for a long the stop is the lower barrier, for a short the upper.
+            if s > 0:
+                win, exit_price = (False, barrier_down[t]) if hit_down else (True, barrier_up[t])
+            else:
+                win, exit_price = (False, barrier_up[t]) if hit_up else (True, barrier_down[t])
+            label[t] = 1.0 if win else 0.0
+            ret_trade[t] = s * (exit_price / close[t] - 1.0)
+            holding[t] = h
+            break
+        else:  # vertical barrier: sign of the side-adjusted realized return
+            final_return = s * (close[t + max_holding] / close[t] - 1.0)
             label[t] = 1.0 if final_return > 0 else 0.0
             ret_trade[t] = final_return
             holding[t] = max_holding

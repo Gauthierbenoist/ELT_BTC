@@ -23,7 +23,12 @@ from scipy import stats as scipy_stats
 from sklearn.metrics import roc_auc_score
 
 from elt_btc.candles import timeframe_to_ms
-from elt_btc.ml.backtest import max_drawdown, sharpe_ratio, strategy_returns
+from elt_btc.ml.backtest import (
+    max_drawdown,
+    meta_effective_proba,
+    sharpe_ratio,
+    strategy_returns,
+)
 from elt_btc.ml.runs import Run, list_runs, load_run
 from elt_btc.ml.trade_backtest import simulate_trades
 
@@ -41,12 +46,30 @@ def get_run(path_str: str) -> Run:
 
 
 def compute_model(
-    df: pd.DataFrame, p_up: np.ndarray, fee_rate: float, band: float, bars_per_year: float
+    df: pd.DataFrame,
+    p_up: np.ndarray,
+    fee_rate: float,
+    band: float,
+    bars_per_year: float,
+    is_meta: bool = False,
 ) -> dict[str, object]:
-    """All curves and metrics of one strategy on the OOS window."""
+    """All curves and metrics of one strategy on the OOS window.
+
+    For meta-labeling runs ``p_up`` is a win probability: it is mapped to a
+    directional probability along the primary side (never fading it) and
+    ``ret_next`` (side-adjusted) is mapped back to price space.
+    """
     ret_next = df["ret_next"].to_numpy()
     y = df["y"].to_numpy()
-    gross, net, positions = strategy_returns(p_up, ret_next, fee_rate=fee_rate, threshold_band=band)
+    if is_meta:
+        side = df["side"].to_numpy()
+        p_directional = meta_effective_proba(p_up, side)
+        ret_next = side * ret_next
+    else:
+        p_directional = p_up
+    gross, net, positions = strategy_returns(
+        p_directional, ret_next, fee_rate=fee_rate, threshold_band=band
+    )
     changes = np.abs(np.diff(positions, prepend=0.0))
     equity = np.cumprod(1.0 + net)
     drawdown = equity / np.maximum.accumulate(equity) - 1.0
@@ -103,6 +126,7 @@ def main() -> None:
     bars_per_year = MS_PER_YEAR / timeframe_to_ms(timeframe)
     fee_rate = fee_bps / 10_000.0
     info = run.report.get("dataset", {})
+    is_meta = run.report["config"].get("target", {}).get("type") == "meta_triple_barrier"
 
     st.title("Benchmark P(hausse) BTC — analyse out-of-sample")
     st.caption(
@@ -116,11 +140,18 @@ def main() -> None:
     for i, name in enumerate(selected):
         df = run.predictions.loc[run.predictions["model"] == name].sort_values("timestamp")
         df = df.reset_index(drop=True)
-        computed[name] = compute_model(df, df["p_up"].to_numpy(), fee_rate, band, bars_per_year)
+        computed[name] = compute_model(
+            df, df["p_up"].to_numpy(), fee_rate, band, bars_per_year, is_meta=is_meta
+        )
         colors[name] = PALETTE[i % len(PALETTE)]
     # Buy & hold reference: constant long on the same OOS grid (one entry fee).
     reference = run.predictions.loc[run.predictions["model"] == selected[0]]
     reference = reference.sort_values("timestamp").reset_index(drop=True)
+    if is_meta:
+        # In price space: undo the side adjustment before holding long.
+        reference = reference.assign(
+            ret_next=reference["side"].to_numpy() * reference["ret_next"].to_numpy()
+        )
     computed[BUY_HOLD] = compute_model(
         reference, np.ones(len(reference)), fee_rate, band, bars_per_year
     )
@@ -242,6 +273,7 @@ def main() -> None:
                     bar_ms=bar_ms,
                     fee_rate=fee_rate,
                     threshold_band=band,
+                    side=df["side"].to_numpy() if is_meta and "side" in df.columns else None,
                 )
                 m = result.metrics
                 trade_rows[name] = {

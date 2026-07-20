@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 
 from elt_btc.candles import timeframe_to_ms
-from elt_btc.ml.backtest import backtest_metrics
+from elt_btc.ml.backtest import backtest_metrics, meta_effective_proba
 from elt_btc.ml.config import BenchmarkSettings, load_benchmark_settings
 from elt_btc.ml.dataset import Dataset, build_dataset
 from elt_btc.ml.metrics import aggregate_folds, calibration_table, evaluate_fold
@@ -107,13 +107,17 @@ def run_benchmark(
             test_end,
         )
         models = build_models(settings.models.seed)  # fresh instances every fold
+        is_meta = settings.target.type == "meta_triple_barrier"
+        side_test = dataset.side.iloc[test_idx].to_numpy()
         for name in names:
             model = models[name]
             model.fit(X_train, y_train)
             p_up = model.predict_proba(X_test)[:, 1]
+            # For meta targets the bar-level layer needs directional probas.
+            p_directional = meta_effective_proba(p_up, side_test) if is_meta else p_up
             scores = evaluate_fold(y_test, p_up) | backtest_metrics(
-                p_up,
-                ret_test,
+                p_directional,
+                ret_test if not is_meta else side_test * ret_test,
                 fee_rate=fee_rate,
                 bars_per_year=bars_per_year,
                 threshold_band=settings.backtest.threshold_band,
@@ -133,6 +137,7 @@ def run_benchmark(
                         "p_up": p_up,
                         "ret_next": ret_test,
                         "holding_bars": dataset.holding_bars.iloc[test_idx].to_numpy(),
+                        "side": side_test,
                     }
                 )
             )
@@ -144,15 +149,19 @@ def run_benchmark(
 
     predictions = pd.concat(prediction_frames, ignore_index=True)
     bar_ms = timeframe_to_ms(settings.dataset.timeframe)
+    is_meta = settings.target.type == "meta_triple_barrier"
     results: dict[str, dict[str, object]] = {}
     for name in names:
         pooled = predictions.loc[predictions["model"] == name].sort_values("timestamp")
+        pooled_p = pooled["p_up"].to_numpy()
+        pooled_side = pooled["side"].to_numpy()
+        pooled_ret = pooled["ret_next"].to_numpy()
         results[name] = {
             "folds": per_model_folds[name],
             "aggregate": aggregate_folds(per_model_folds[name]),
             "pooled_backtest": backtest_metrics(
-                pooled["p_up"].to_numpy(),
-                pooled["ret_next"].to_numpy(),
+                meta_effective_proba(pooled_p, pooled_side) if is_meta else pooled_p,
+                pooled_side * pooled_ret if is_meta else pooled_ret,
                 fee_rate=fee_rate,
                 bars_per_year=bars_per_year,
                 threshold_band=settings.backtest.threshold_band,
@@ -160,12 +169,13 @@ def run_benchmark(
             # Executable policy: one trade at a time, held to its exit.
             "trade_backtest": simulate_trades(
                 pooled["timestamp"].to_numpy(),
-                pooled["p_up"].to_numpy(),
-                pooled["ret_next"].to_numpy(),
+                pooled_p,
+                pooled_ret,
                 pooled["holding_bars"].to_numpy(),
                 bar_ms=bar_ms,
                 fee_rate=fee_rate,
                 threshold_band=settings.backtest.threshold_band,
+                side=pooled_side if is_meta else None,
             ).metrics,
         }
 

@@ -41,20 +41,29 @@ class TargetSettings(BaseModel):
     """Label definition.
 
     ``next_bar``: ``1{close_{t+1} > close_t}`` (horizon = 1 bar).
-    ``triple_barrier``: López de Prado triple-barrier labels (horizon =
-    ``max_holding`` bars) — see :mod:`elt_btc.ml.labels`.
+    ``triple_barrier``: López de Prado triple-barrier labels on a long
+    virtual trade (horizon = ``max_holding`` bars).
+    ``meta_triple_barrier``: meta-labeling — a primary momentum signal
+    (sign of the trailing ``side_momentum_window``-bar return) picks the
+    trade side, barriers are set in that direction, and the model learns
+    whether the sided trade wins. See :mod:`elt_btc.ml.labels`.
     """
 
-    type: Literal["next_bar", "triple_barrier"] = "next_bar"
+    type: Literal["next_bar", "triple_barrier", "meta_triple_barrier"] = "next_bar"
     vol_span: int = Field(default=42, gt=1)
     pt_mult: float = Field(default=1.0, gt=0)
     sl_mult: float = Field(default=1.0, gt=0)
     max_holding: int = Field(default=42, gt=0)
+    side_momentum_window: int = Field(default=12, gt=0)
+
+    @property
+    def is_barrier(self) -> bool:
+        return self.type in ("triple_barrier", "meta_triple_barrier")
 
     @property
     def horizon_bars(self) -> int:
         """How many future bars a label may depend on (min purge)."""
-        return self.max_holding if self.type == "triple_barrier" else 1
+        return self.max_holding if self.is_barrier else 1
 
 
 class SplitSettings(BaseModel):

@@ -14,6 +14,18 @@ import math
 import numpy as np
 
 
+def meta_effective_proba(p_win: np.ndarray, side: np.ndarray) -> np.ndarray:
+    """Map meta-label win probabilities onto directional ``p_up`` space.
+
+    Meta-labeling never fades its primary signal: a confident win pushes
+    the effective probability toward the signal's side; ``p_win <= 0.5``
+    maps to exactly 0.5 (stay flat). Feeding the result to
+    :func:`positions_from_proba` reproduces the meta policy.
+    """
+    confidence = np.maximum(p_win - 0.5, 0.0)
+    return 0.5 + side * confidence
+
+
 def positions_from_proba(p_up: np.ndarray, threshold_band: float = 0.0) -> np.ndarray:
     """Map probabilities to positions: +1 above ``0.5 + band``, -1 below
     ``0.5 - band``, 0 inside the neutral band."""

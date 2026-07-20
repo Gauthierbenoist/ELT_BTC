@@ -38,14 +38,22 @@ def simulate_trades(
     bar_ms: int,
     fee_rate: float,
     threshold_band: float = 0.0,
+    side: np.ndarray | None = None,
 ) -> TradeBacktestResult:
     """Run the sequential simulation over chronologically sorted samples.
 
+    Without ``side``, ``p_up`` is a directional probability: long above
+    ``0.5 + band``, short below ``0.5 - band``, and ``ret_trade`` is the
+    *long* trade's return (shorts take its negative — symmetric barriers).
+
+    With ``side`` (meta-labeling), ``p_up`` is the probability that the
+    *sided* trade wins and ``ret_trade`` is already side-adjusted: enter in
+    the primary signal's direction when ``p_up > 0.5 + band``, never fade
+    the signal.
+
     Args:
         timestamps: Bar open times (epoch ms), strictly increasing.
-        ret_trade: Return of the *long* virtual trade opened at each bar
-            (entry at close, exit at the touched barrier).
-        holding_bars: Bars until that trade's exit.
+        holding_bars: Bars until each trade's exit.
         fee_rate: One-way fee; a round trip costs ``2 * fee_rate``.
     """
     if np.any(np.diff(timestamps) <= 0):
@@ -57,13 +65,19 @@ def simulate_trades(
         ts = int(timestamps[i])
         if ts < busy_until:
             continue  # a trade is still open: signal ignored
-        if p_up[i] > 0.5 + threshold_band:
+        if side is not None:
+            if p_up[i] <= 0.5 + threshold_band or side[i] == 0:
+                continue
+            direction = int(side[i])
+            gross = float(ret_trade[i])  # already side-adjusted
+        elif p_up[i] > 0.5 + threshold_band:
             direction = 1
+            gross = float(ret_trade[i])
         elif p_up[i] < 0.5 - threshold_band:
             direction = -1
+            gross = -float(ret_trade[i])
         else:
             continue
-        gross = direction * float(ret_trade[i])
         holding = int(holding_bars[i])
         records.append((ts, direction, holding, gross, gross - 2.0 * fee_rate))
         busy_until = ts + holding * bar_ms
