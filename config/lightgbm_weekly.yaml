@@ -1,0 +1,28 @@
+# LightGBM weekly configuration. Windows are in *weekly* bars.
+# Caveat spelled out in the README: ~410 usable samples only — read any
+# result from this timeframe with wide error bars.
+dataset:
+  parquet_root: data/raw/1m
+  timeframe: 1w              # Monday-anchored weeks (00:00 UTC)
+  min_minutes_per_bar: 9000  # of 10080 minutes per week; tolerates known gaps
+
+features:
+  momentum_windows: [2, 4, 8, 13, 26, 52]
+  vol_windows: [4, 13, 26]
+  range_vol_windows: [4, 13]
+  channel_windows: [13, 52]
+  rsi_period: 14
+  volume_windows: [4, 13]
+
+split:
+  n_splits: 4
+  test_size: 26      # ~6 months per fold
+  min_train_size: 250
+  purge: 2
+
+models:
+  seed: 42
+
+backtest:
+  fee_bps: 10.0
+  threshold_band: 0.0

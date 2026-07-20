@@ -6,6 +6,7 @@ import pytest
 
 from elt_btc.candles import (
     OHLCV_COLUMNS,
+    bar_anchor_ms,
     deduplicate,
     filter_closed_candles,
     ohlcv_to_dataframe,
@@ -22,6 +23,17 @@ def test_timeframe_to_ms():
     assert timeframe_to_ms("15m") == 900_000
     assert timeframe_to_ms("4h") == 14_400_000
     assert timeframe_to_ms("1d") == 86_400_000
+    assert timeframe_to_ms("1w") == 604_800_000
+
+
+def test_bar_anchor_monday_for_weekly_only():
+    assert bar_anchor_ms("1h") == 0
+    assert bar_anchor_ms("1d") == 0
+    # Monday 00:00 UTC anchor: epoch day 0 was a Thursday, Monday is +4 days.
+    assert bar_anchor_ms("1w") == 4 * 86_400_000
+    # 2024-01-01 was a Monday: it must sit exactly on the weekly grid.
+    monday_2024 = 1_704_067_200_000
+    assert (monday_2024 - bar_anchor_ms("1w")) % timeframe_to_ms("1w") == 0
 
 
 def test_timeframe_to_ms_invalid():

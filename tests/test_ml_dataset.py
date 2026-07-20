@@ -54,6 +54,17 @@ def test_resample_drops_gappy_bars():
     assert list(bars["timestamp"]) == [T0, T0 + 2 * HOUR_MS]
 
 
+def test_weekly_resample_anchored_on_monday():
+    # 1m candles on Wednesday 2024-01-03 must land in the week opening
+    # Monday 2024-01-01 00:00 UTC, not in an epoch-floored (Thursday) week.
+    monday = 1_704_067_200_000
+    wednesday = monday + 2 * 86_400_000
+    df = minute_frame(1)
+    df["timestamp"] = wednesday + np.arange(60) * MIN_MS
+    bars = resample_to_bars(df, "1w", min_minutes_per_bar=30)
+    assert list(bars["timestamp"]) == [monday]
+
+
 def test_make_target_alignment():
     close = pd.Series([100.0, 101.0, 100.5, 100.5, 102.0])
     y = make_target(close)

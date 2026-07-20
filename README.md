@@ -124,6 +124,12 @@ Empirical note: on this protocol the volume features did **not** improve
 LightGBM (AUC 0.554 vs 0.558 OHLC-only) — kept as the working baseline for
 further feature work.
 
+A weekly variant is tracked in
+[lightgbm_weekly.yaml](config/lightgbm_weekly.yaml) (Monday-anchored `1w`
+bars, windows in weeks). **Statistical warning**: only ~410 weekly samples
+exist since 2017 and each test fold holds 26 observations — metrics from
+this timeframe carry very wide error bars and should not drive decisions.
+
 Configuration in [config/benchmark.yaml](config/benchmark.yaml). Each run
 writes a self-contained, reproducible directory `outputs/benchmark/run_<UTC>/`:
 

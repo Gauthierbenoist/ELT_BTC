@@ -22,15 +22,18 @@ _OHLCV_DTYPES = {
     "volume": "float64",
 }
 
-_TIMEFRAME_RE = re.compile(r"^(\d+)([mhd])$")
-_UNIT_MS = {"m": 60_000, "h": 3_600_000, "d": 86_400_000}
+_TIMEFRAME_RE = re.compile(r"^(\d+)([mhdw])$")
+_UNIT_MS = {"m": 60_000, "h": 3_600_000, "d": 86_400_000, "w": 604_800_000}
+_WEEK_MS = 604_800_000
+# Epoch day 0 (1970-01-01) was a Thursday; Monday 00:00 UTC is 4 days later.
+_MONDAY_ANCHOR_MS = 4 * 86_400_000
 
 
 def timeframe_to_ms(timeframe: str) -> int:
     """Return the duration of one candle in milliseconds.
 
-    Supports ccxt-style timeframes with minute/hour/day units, e.g. ``"1m"``,
-    ``"15m"``, ``"4h"``, ``"1d"``.
+    Supports ccxt-style timeframes with minute/hour/day/week units, e.g.
+    ``"1m"``, ``"15m"``, ``"4h"``, ``"1d"``, ``"1w"``.
 
     Raises:
         ValueError: If the timeframe string is not recognized.
@@ -39,6 +42,16 @@ def timeframe_to_ms(timeframe: str) -> int:
     if match is None:
         raise ValueError(f"Unsupported timeframe: {timeframe!r}")
     return int(match.group(1)) * _UNIT_MS[match.group(2)]
+
+
+def bar_anchor_ms(timeframe: str) -> int:
+    """Offset of the bar grid relative to the epoch, in milliseconds.
+
+    Zero for intraday/daily timeframes. For weekly multiples the grid is
+    anchored on Monday 00:00 UTC (market convention) — a plain epoch floor
+    would start weeks on Thursday.
+    """
+    return _MONDAY_ANCHOR_MS if timeframe_to_ms(timeframe) % _WEEK_MS == 0 else 0
 
 
 def ohlcv_to_dataframe(rows: Sequence[Sequence[float]]) -> pd.DataFrame:

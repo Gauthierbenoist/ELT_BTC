@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from elt_btc.candles import OHLCV_COLUMNS, timeframe_to_ms
+from elt_btc.candles import OHLCV_COLUMNS, bar_anchor_ms, timeframe_to_ms
 from elt_btc.features.ohlc import build_features
 from elt_btc.features.volume import build_volume_features
 from elt_btc.ml.config import BenchmarkSettings
@@ -53,10 +53,12 @@ def resample_to_bars(df_1m: pd.DataFrame, timeframe: str, min_minutes_per_bar: i
 
     A bar with open time ``T`` uses only the 1m candles in ``[T, T + tf)``.
     Bars built from fewer than ``min_minutes_per_bar`` candles (exchange
-    outages) are dropped: their OHLC would be distorted.
+    outages, partial first/last bars) are dropped: their OHLC would be
+    distorted. Weekly grids are anchored on Monday 00:00 UTC.
     """
     tf_ms = timeframe_to_ms(timeframe)
-    bar_open = (df_1m["timestamp"] // tf_ms) * tf_ms
+    anchor_ms = bar_anchor_ms(timeframe)
+    bar_open = (df_1m["timestamp"] - anchor_ms) // tf_ms * tf_ms + anchor_ms
     bars = df_1m.groupby(bar_open).agg(
         open=("open", "first"),
         high=("high", "max"),
