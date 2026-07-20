@@ -26,8 +26,9 @@ class RunInfo:
 class Run:
     """Fully loaded run artifacts.
 
-    ``bars`` (full OHLCV bars of the run's timeframe) is None for runs
-    generated before the artifact existed.
+    ``bars`` (full OHLCV bars), ``contributions`` (per-prediction TreeSHAP
+    values) and ``features`` (feature values per decision time) are None
+    for runs generated before those artifacts existed.
     """
 
     report: dict[str, Any]
@@ -35,6 +36,8 @@ class Run:
     importances: dict[str, dict[str, float]]
     calibration: dict[str, list[dict[str, float]]]
     bars: pd.DataFrame | None = None
+    contributions: pd.DataFrame | None = None
+    features: pd.DataFrame | None = None
 
 
 def list_runs(root: Path) -> list[RunInfo]:
@@ -67,12 +70,17 @@ def load_run(run_dir: Path) -> Run:
         if calibration_path.is_file()
         else {}
     )
-    bars_path = run_dir / "bars.parquet"
-    bars = pd.read_parquet(bars_path) if bars_path.is_file() else None
+
+    def _optional_parquet(name: str) -> pd.DataFrame | None:
+        path = run_dir / name
+        return pd.read_parquet(path) if path.is_file() else None
+
     return Run(
         report=report,
         predictions=predictions,
         importances=importances,
         calibration=calibration,
-        bars=bars,
+        bars=_optional_parquet("bars.parquet"),
+        contributions=_optional_parquet("contributions.parquet"),
+        features=_optional_parquet("features.parquet"),
     )

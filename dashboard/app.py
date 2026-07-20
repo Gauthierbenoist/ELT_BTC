@@ -507,6 +507,66 @@ def main() -> None:
                         )
                         st.plotly_chart(chart, width="stretch")
 
+                    contributions = run.contributions
+                    if contributions is None:
+                        st.info(
+                            "Contributions par trade indisponibles : régénérez le run "
+                            "avec une version récente du benchmark."
+                        )
+                    else:
+                        mask = (contributions["model"] == detail_model) & (
+                            contributions["timestamp"] == int(row["entry_ts"])
+                        )
+                        matched = contributions.loc[mask]
+                        if matched.empty:
+                            st.info("Pas de contributions pour ce modèle (LightGBM uniquement).")
+                        else:
+                            contrib_row = (
+                                matched.iloc[0].drop(["model", "timestamp", "bias"]).astype(float)
+                            )
+                            top_contrib = contrib_row.reindex(
+                                contrib_row.abs().sort_values(ascending=False).index[:8]
+                            )
+                            contrib_labels = [str(feat) for feat in top_contrib.index]
+                            if run.features is not None:
+                                feat_match = run.features.loc[
+                                    run.features["timestamp"] == int(row["entry_ts"])
+                                ]
+                                if len(feat_match):
+                                    feature_values = feat_match.iloc[0]
+                                    contrib_labels = [
+                                        f"{feat} = {feature_values[feat]:.4g}"
+                                        if feat in feature_values
+                                        else str(feat)
+                                        for feat in top_contrib.index
+                                    ]
+                            bar_fig = go.Figure(
+                                go.Bar(
+                                    x=top_contrib.to_numpy()[::-1],
+                                    y=contrib_labels[::-1],
+                                    orientation="h",
+                                    marker={
+                                        "color": [
+                                            "#00cc96" if v > 0 else "#ef553b"
+                                            for v in top_contrib.to_numpy()[::-1]
+                                        ]
+                                    },
+                                )
+                            )
+                            bar_fig.update_layout(
+                                height=340,
+                                title=f"Pourquoi p = {row['p_up']:.3f} — top 8 contributions",
+                                xaxis_title="Contribution (log-odds)",
+                                margin={"t": 40},
+                            )
+                            st.plotly_chart(bar_fig, width="stretch")
+                            st.caption(
+                                "Contributions TreeSHAP du modèle du fold qui a produit cette "
+                                "prédiction. Vert : pousse vers « le trade gagne » ; rouge : "
+                                "vers « il perd ». Unités en log-odds (l'espace interne du "
+                                "modèle), pas en points de probabilité."
+                            )
+
     with tab_imp:
         with_importances = [m for m in selected if run.importances.get(m)]
         if not with_importances:

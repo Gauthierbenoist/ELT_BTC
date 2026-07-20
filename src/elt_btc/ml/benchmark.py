@@ -16,6 +16,10 @@ Each run writes a self-contained directory ``outputs/benchmark/run_<UTC>/``:
 - ``calibration.json``  — reliability-diagram data per model (pooled OOS)
 - ``importances.json``  — LightGBM gain importances / |logreg coefs|
 - ``models/``           — every fitted model, one joblib file per fold
+- ``contributions.parquet`` — per-prediction feature contributions
+  (TreeSHAP via LightGBM's ``pred_contrib``, log-odds space), computed by
+  the fold model that produced each OOS prediction
+- ``features.parquet``  — feature values per decision time, for inspection
 """
 
 from __future__ import annotations
@@ -65,12 +69,19 @@ def run_benchmark(
     dataset: Dataset,
     model_names: list[str] | None = None,
     models_dir: Path | None = None,
-) -> tuple[dict[str, object], pd.DataFrame, pd.DataFrame, dict[str, dict[str, float]]]:
+) -> tuple[
+    dict[str, object],
+    pd.DataFrame,
+    pd.DataFrame,
+    dict[str, dict[str, float]],
+    pd.DataFrame | None,
+]:
     """Evaluate every requested model across the purged walk-forward folds.
 
-    Returns ``(report, folds_frame, predictions_frame, importances)``. When
-    ``models_dir`` is given, every fitted model is persisted there as
-    ``<name>_fold<i>.joblib``.
+    Returns ``(report, folds_frame, predictions_frame, importances,
+    contributions)`` — ``contributions`` holds per-prediction TreeSHAP
+    values (LightGBM only, None otherwise). When ``models_dir`` is given,
+    every fitted model is persisted there as ``<name>_fold<i>.joblib``.
     """
     splitter = PurgedWalkForwardSplit(
         n_splits=settings.split.n_splits,
@@ -89,6 +100,7 @@ def run_benchmark(
 
     fold_rows: list[dict[str, object]] = []
     prediction_frames: list[pd.DataFrame] = []
+    contribution_frames: list[pd.DataFrame] = []
     per_model_folds: dict[str, list[dict[str, float]]] = {name: [] for name in names}
     importances: dict[str, dict[str, float]] = {}
 
@@ -142,6 +154,15 @@ def run_benchmark(
                     }
                 )
             )
+            if name == "lightgbm":
+                # TreeSHAP contributions (log-odds), from THIS fold's model.
+                contrib = model.booster_.predict(  # type: ignore[attr-defined]
+                    X_test, pred_contrib=True
+                )
+                contrib_frame = pd.DataFrame(contrib, columns=[*dataset.X.columns, "bias"])
+                contrib_frame.insert(0, "timestamp", dataset.timestamps.iloc[test_idx].to_numpy())
+                contrib_frame.insert(0, "model", name)
+                contribution_frames.append(contrib_frame)
             if models_dir is not None:
                 # compress=3 (zlib): ~5x smaller LightGBM files, negligible load cost.
                 joblib.dump(model, models_dir / f"{name}_fold{fold}.joblib", compress=3)
@@ -193,7 +214,10 @@ def run_benchmark(
         },
         "results": results,
     }
-    return report, pd.DataFrame(fold_rows), predictions, importances
+    contributions = (
+        pd.concat(contribution_frames, ignore_index=True) if contribution_frames else None
+    )
+    return report, pd.DataFrame(fold_rows), predictions, importances, contributions
 
 
 def _extract_importances(name: str, model: object, features: list[str]) -> dict[str, float]:
@@ -238,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
 
     dataset = build_dataset(settings)
     model_names = args.models.split(",") if args.models else None
-    report, folds_frame, predictions, importances = run_benchmark(
+    report, folds_frame, predictions, importances, contributions = run_benchmark(
         settings, dataset, model_names, models_dir=models_dir
     )
 
@@ -247,6 +271,11 @@ def main(argv: list[str] | None = None) -> int:
     predictions.to_parquet(run_dir / "predictions.parquet", compression="zstd", index=False)
     # Full OHLCV bars for the dashboard's candlestick trade inspector.
     dataset.bars.to_parquet(run_dir / "bars.parquet", compression="zstd", index=False)
+    if contributions is not None:
+        contributions.to_parquet(run_dir / "contributions.parquet", compression="zstd", index=False)
+    pd.concat([dataset.timestamps.rename("timestamp"), dataset.X], axis=1).to_parquet(
+        run_dir / "features.parquet", compression="zstd", index=False
+    )
     (run_dir / "importances.json").write_text(json.dumps(importances, indent=2), encoding="utf-8")
     calibration = {
         name: calibration_table(

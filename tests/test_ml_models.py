@@ -27,6 +27,19 @@ def test_momentum_sign_conditional_rates():
     assert p[4:] == pytest.approx(np.full(4, 0.25))
 
 
+def test_lightgbm_contributions_sum_to_prediction():
+    """pred_contrib rows (+ bias) must map back to predict_proba via sigmoid."""
+    rng = np.random.default_rng(4)
+    n = 500
+    X = pd.DataFrame({"a": rng.normal(size=n), "b": rng.normal(size=n)})
+    y = pd.Series((X["a"] + rng.normal(scale=0.5, size=n) > 0).astype(int))
+    model = build_models(seed=0)["lightgbm"].fit(X, y)
+    contrib = model.booster_.predict(X, pred_contrib=True)
+    assert contrib.shape == (n, 3)  # one column per feature + bias
+    p_from_contrib = 1.0 / (1.0 + np.exp(-contrib.sum(axis=1)))
+    assert p_from_contrib == pytest.approx(model.predict_proba(X)[:, 1], abs=1e-9)
+
+
 def test_zoo_smoke_fit_predict():
     rng = np.random.default_rng(0)
     n = 400
