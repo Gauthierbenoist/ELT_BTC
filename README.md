@@ -118,8 +118,9 @@ uv run python -m elt_btc.ml.benchmark --config config/lightgbm_volume.yaml --mod
 
 Two configs are tracked: [benchmark.yaml](config/benchmark.yaml) (OHLC-only
 protocol — the frozen reference floor, `run_1_benchmark`) and
-[lightgbm_volume.yaml](config/lightgbm_volume.yaml) (adds causal volume
-features `volume_rel_*` / `volume_z_*` via `features.volume_windows`).
+[lightgbm_volume.yaml](config/lightgbm_volume.yaml) (adds the causal volume
+z-score feature `volume_z_*` — the just-closed bar scored against the prior
+`w - 1` bars — via `features.volume_windows`).
 Empirical note: on this protocol the volume features did **not** improve
 LightGBM (AUC 0.554 vs 0.558 OHLC-only) — kept as the working baseline for
 further feature work.

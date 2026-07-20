@@ -12,7 +12,7 @@ features:
   range_vol_windows: [24, 168]
   channel_windows: [24, 168]
   rsi_period: 14
-  volume_windows: [24, 168]   # adds volume_rel_* and volume_z_* features
+  volume_windows: [20]   # adds volume_z_20: bar scored against prior 19 bars
 
 split:
   n_splits: 8

@@ -25,8 +25,9 @@ class FeatureSettings(BaseModel):
     """Rolling-window lengths (in bars) for the feature set.
 
     ``volume_windows`` empty (the default) keeps the feature set OHLC-only;
-    non-empty adds the volume features from
-    :mod:`elt_btc.features.volume`.
+    non-empty adds one ``volume_z_w`` feature per window from
+    :mod:`elt_btc.features.volume`. Windows are in prediction bars, so
+    ``[20]`` means "bar scored against the prior 19 bars" at any timeframe.
     """
 
     momentum_windows: list[int] = [3, 6, 12, 24, 72, 168]
