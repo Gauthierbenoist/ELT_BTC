@@ -261,6 +261,8 @@ def main() -> None:
         else:
             bar_ms = timeframe_to_ms(timeframe)
             trade_rows = {}
+            trade_results: dict[str, pd.DataFrame] = {}
+            entry_prices: dict[str, pd.Series] = {}
             fig = go.Figure()
             for name in selected:
                 df = run.predictions.loc[run.predictions["model"] == name]
@@ -275,6 +277,9 @@ def main() -> None:
                     threshold_band=band,
                     side=df["side"].to_numpy() if is_meta and "side" in df.columns else None,
                 )
+                trade_results[name] = result.trades
+                if "close" in df.columns:
+                    entry_prices[name] = df.set_index("timestamp")["close"]
                 m = result.metrics
                 trade_rows[name] = {
                     "Nb trades": m["n_trades"],
@@ -325,6 +330,101 @@ def main() -> None:
                 legend={"orientation": "h"},
             )
             st.plotly_chart(fig, width="stretch")
+
+            st.subheader("Détail des trades")
+            detail_model = st.selectbox(
+                "Modèle", [m for m in selected if m in trade_results], key="detail_model"
+            )
+            trades = trade_results.get(detail_model, pd.DataFrame())
+            if trades.empty:
+                st.info("Aucun trade avec ces réglages.")
+            else:
+                detail = trades.copy()
+                detail["Entrée"] = pd.to_datetime(detail["entry_ts"], unit="ms", utc=True)
+                detail["Sortie"] = pd.to_datetime(detail["exit_ts"], unit="ms", utc=True)
+                detail["Sens"] = np.where(detail["direction"] > 0, "Long", "Short")
+                detail["Résultat"] = np.where(detail["ret_net"] > 0, "Gagnant", "Perdant")
+                if detail_model in entry_prices:
+                    detail["Prix entrée"] = (
+                        detail["entry_ts"].map(entry_prices[detail_model]).astype(float)
+                    )
+                    detail["Prix sortie"] = detail["Prix entrée"] * (
+                        1.0 + detail["direction"] * detail["ret_gross"]
+                    )
+                else:
+                    detail["Prix entrée"] = np.nan  # run antérieur à la colonne close
+                    detail["Prix sortie"] = np.nan
+
+                col_result, col_side = st.columns(2)
+                with col_result:
+                    result_filter = st.radio(
+                        "Résultat", ["Tous", "Gagnants", "Perdants"], horizontal=True
+                    )
+                with col_side:
+                    side_filter = st.radio("Sens", ["Tous", "Long", "Short"], horizontal=True)
+                if result_filter != "Tous":
+                    detail = detail[detail["Résultat"] == result_filter[:-1]]
+                if side_filter != "Tous":
+                    detail = detail[detail["Sens"] == side_filter]
+                st.caption(f"{len(detail)} trade(s) après filtre")
+
+                display_cols = [
+                    "Entrée",
+                    "Sortie",
+                    "Sens",
+                    "p_up",
+                    "Prix entrée",
+                    "Prix sortie",
+                    "holding_bars",
+                    "ret_gross",
+                    "ret_net",
+                    "Résultat",
+                ]
+                st.dataframe(
+                    detail[display_cols].reset_index(drop=True),
+                    width="stretch",
+                    column_config={
+                        "Entrée": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
+                        "Sortie": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
+                        "p_up": st.column_config.NumberColumn("p ML", format="%.3f"),
+                        "Prix entrée": st.column_config.NumberColumn(format="dollar"),
+                        "Prix sortie": st.column_config.NumberColumn(format="dollar"),
+                        "holding_bars": st.column_config.NumberColumn(
+                            "Durée (bougies)", format="%.0f"
+                        ),
+                        "ret_gross": st.column_config.NumberColumn("Rdt brut", format="percent"),
+                        "ret_net": st.column_config.NumberColumn("Rdt net", format="percent"),
+                    },
+                )
+
+                if len(detail):
+                    st.markdown("**Trade par trade**")
+                    idx = st.number_input(
+                        "Trade n° (dans la liste filtrée)",
+                        min_value=1,
+                        max_value=len(detail),
+                        value=1,
+                        step=1,
+                    )
+                    row = detail.iloc[int(idx) - 1]
+                    c1, c2, c3, c4, c5 = st.columns(5)
+                    c1.metric("Sens", str(row["Sens"]))
+                    c2.metric("p ML", f"{row['p_up']:.3f}")
+                    c3.metric(
+                        "Entrée",
+                        "—" if pd.isna(row["Prix entrée"]) else f"{row['Prix entrée']:,.0f} $",
+                        str(row["Entrée"])[:16],
+                    )
+                    c4.metric(
+                        "Sortie",
+                        "—" if pd.isna(row["Prix sortie"]) else f"{row['Prix sortie']:,.0f} $",
+                        str(row["Sortie"])[:16],
+                    )
+                    c5.metric(
+                        "Rendement net",
+                        f"{100 * row['ret_net']:+.2f} %",
+                        f"{int(row['holding_bars'])} bougies",
+                    )
 
     with tab_imp:
         with_importances = [m for m in selected if run.importances.get(m)]

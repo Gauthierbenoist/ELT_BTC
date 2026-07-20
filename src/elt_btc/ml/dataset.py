@@ -43,6 +43,7 @@ class Dataset:
     ret_next: pd.Series
     holding_bars: pd.Series
     side: pd.Series  # +1/-1 primary signal (meta-labeling); all +1 otherwise
+    entry_close: pd.Series  # bar close at decision time (trade entry price)
 
 
 def load_1m_lake(root: Path) -> pd.DataFrame:
@@ -153,6 +154,7 @@ def build_dataset(settings: BenchmarkSettings) -> Dataset:
     ret_next = next_return.loc[valid].reset_index(drop=True)
     holding_bars = holding.loc[valid].astype("int64").reset_index(drop=True)
     side_out = side.loc[valid].astype("int64").reset_index(drop=True)
+    entry_close = bars.loc[valid, "close"].reset_index(drop=True)
     logger.info(
         "Dataset ready: %d samples x %d features, up-rate %.4f",
         len(X),
@@ -166,4 +168,5 @@ def build_dataset(settings: BenchmarkSettings) -> Dataset:
         ret_next=ret_next,
         holding_bars=holding_bars,
         side=side_out,
+        entry_close=entry_close,
     )

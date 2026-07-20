@@ -138,6 +138,7 @@ def run_benchmark(
                         "ret_next": ret_test,
                         "holding_bars": dataset.holding_bars.iloc[test_idx].to_numpy(),
                         "side": side_test,
+                        "close": dataset.entry_close.iloc[test_idx].to_numpy(),
                     }
                 )
             )

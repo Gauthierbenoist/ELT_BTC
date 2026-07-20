@@ -18,7 +18,15 @@ import pandas as pd
 
 _MS_PER_YEAR = 365 * 86_400 * 1000
 
-TRADE_COLUMNS = ["entry_ts", "direction", "holding_bars", "ret_gross", "ret_net"]
+TRADE_COLUMNS = [
+    "entry_ts",
+    "exit_ts",
+    "direction",
+    "holding_bars",
+    "p_up",
+    "ret_gross",
+    "ret_net",
+]
 
 
 @dataclass(frozen=True)
@@ -59,7 +67,7 @@ def simulate_trades(
     if np.any(np.diff(timestamps) <= 0):
         raise ValueError("timestamps must be strictly increasing")
 
-    records: list[tuple[int, int, int, float, float]] = []
+    records: list[tuple[int, int, int, int, float, float, float]] = []
     busy_until = -np.inf
     for i in range(len(timestamps)):
         ts = int(timestamps[i])
@@ -79,8 +87,11 @@ def simulate_trades(
         else:
             continue
         holding = int(holding_bars[i])
-        records.append((ts, direction, holding, gross, gross - 2.0 * fee_rate))
-        busy_until = ts + holding * bar_ms
+        exit_ts = ts + holding * bar_ms
+        records.append(
+            (ts, exit_ts, direction, holding, float(p_up[i]), gross, gross - 2.0 * fee_rate)
+        )
+        busy_until = exit_ts
 
     trades = pd.DataFrame(records, columns=TRADE_COLUMNS)
     elapsed_ms = int(timestamps[-1]) - int(timestamps[0]) + bar_ms if len(timestamps) else 0
