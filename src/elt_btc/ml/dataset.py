@@ -19,6 +19,7 @@ from elt_btc.candles import OHLCV_COLUMNS, bar_anchor_ms, timeframe_to_ms
 from elt_btc.features.ohlc import build_features
 from elt_btc.features.volume import build_volume_features
 from elt_btc.ml.config import BenchmarkSettings
+from elt_btc.ml.labels import triple_barrier_labels
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +30,11 @@ _BAR_COLUMNS = ["timestamp", "open", "high", "low", "close", "volume"]
 class Dataset:
     """Aligned learning matrix: one row per decision time (bar open time in ms).
 
-    ``ret_next`` is the next-bar simple return the label refers to. Like
-    ``y`` it is an *outcome* column — used for evaluation/backtest only,
-    never as a feature.
+    ``ret_next`` is the outcome return the label refers to: the next-bar
+    simple return for the ``next_bar`` target, the virtual trade's return
+    (entry at close, exit at the touched barrier) for ``triple_barrier``.
+    Like ``y`` it is an *outcome* column — evaluation/backtest only, never
+    a feature.
     """
 
     X: pd.DataFrame
@@ -107,8 +110,27 @@ def build_dataset(settings: BenchmarkSettings) -> Dataset:
     if settings.features.volume_windows:
         volume_features = build_volume_features(bars, settings.features.volume_windows)
         features = pd.concat([features, volume_features], axis=1)
-    target = make_target(bars["close"])
-    next_return = make_next_return(bars["close"])
+
+    if settings.target.type == "triple_barrier":
+        tb = triple_barrier_labels(
+            bars,
+            vol_span=settings.target.vol_span,
+            pt_mult=settings.target.pt_mult,
+            sl_mult=settings.target.sl_mult,
+            max_holding=settings.target.max_holding,
+        )
+        target = tb["label"]
+        next_return = tb["ret_trade"]
+        valid_labels = tb["holding_bars"].notna()
+        logger.info(
+            "Triple-barrier labels: mean holding %.1f bars, %.1f%% vertical exits",
+            float(tb.loc[valid_labels, "holding_bars"].mean()),
+            100.0
+            * float((tb.loc[valid_labels, "holding_bars"] == settings.target.max_holding).mean()),
+        )
+    else:
+        target = make_target(bars["close"])
+        next_return = make_next_return(bars["close"])
 
     valid = features.notna().all(axis=1) & target.notna()
     X = features.loc[valid].reset_index(drop=True)

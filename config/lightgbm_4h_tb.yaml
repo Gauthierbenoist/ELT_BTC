@@ -1,0 +1,39 @@
+# LightGBM 4h with triple-barrier labels (Lopez de Prado, AFML ch. 3).
+# The label at t is only resolved once a barrier is hit (up to max_holding
+# bars later): split.purge MUST be >= target.max_holding — enforced by the
+# config loader (a smaller purge would let training labels overlap the
+# test window through open trades).
+dataset:
+  parquet_root: data/raw/1m
+  timeframe: 4h
+  min_minutes_per_bar: 220
+
+features:
+  momentum_windows: [3, 6, 12, 24, 42, 84]
+  vol_windows: [6, 18, 42]
+  range_vol_windows: [6, 42]
+  channel_windows: [18, 84]
+  rsi_period: 14
+  volume_windows: [6, 42]
+
+target:
+  type: triple_barrier
+  vol_span: 42       # EWMA span (bars) for the barrier-width volatility
+  # +/- 2 sigma: at +/-1 sigma the barriers were hit in ~2 bars with 0%
+  # vertical exits, degenerating the scheme into next-move-sign labels.
+  pt_mult: 2.0
+  sl_mult: 2.0
+  max_holding: 42    # vertical barrier: 1 week of 4h bars
+
+split:
+  n_splits: 8
+  test_size: 1095
+  min_train_size: 6570
+  purge: 48          # >= max_holding (42) + margin
+
+models:
+  seed: 42
+
+backtest:
+  fee_bps: 10.0
+  threshold_band: 0.0

@@ -124,6 +124,16 @@ Empirical note: on this protocol the volume features did **not** improve
 LightGBM (AUC 0.554 vs 0.558 OHLC-only) — kept as the working baseline for
 further feature work.
 
+[lightgbm_4h_tb.yaml](config/lightgbm_4h_tb.yaml) uses **triple-barrier
+labels** (López de Prado) on 4h bars: profit-take/stop-loss at ±2 EWMA
+sigmas, vertical barrier at 42 bars. Because such a label is only resolved
+up to `max_holding` bars after its decision time, the config loader
+**rejects any `split.purge < max_holding`** — otherwise training labels
+would overlap the test window through open trades. Caveat: for
+triple-barrier runs the backtest metrics read as *per-signal overlapping
+trade statistics*, not a portfolio equity curve (trades overlap; a proper
+trade-level backtest is future work).
+
 A weekly variant is tracked in
 [lightgbm_weekly.yaml](config/lightgbm_weekly.yaml) (Monday-anchored `1w`
 bars, windows in weeks). **Statistical warning**: only ~410 weekly samples

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 DEFAULT_BENCHMARK_CONFIG_PATH = Path("config/benchmark.yaml")
 _CONFIG_PATH_ENV_VAR = "ELT_BTC_BENCHMARK_CONFIG"
@@ -36,6 +37,26 @@ class FeatureSettings(BaseModel):
     volume_windows: list[int] = []
 
 
+class TargetSettings(BaseModel):
+    """Label definition.
+
+    ``next_bar``: ``1{close_{t+1} > close_t}`` (horizon = 1 bar).
+    ``triple_barrier``: López de Prado triple-barrier labels (horizon =
+    ``max_holding`` bars) — see :mod:`elt_btc.ml.labels`.
+    """
+
+    type: Literal["next_bar", "triple_barrier"] = "next_bar"
+    vol_span: int = Field(default=42, gt=1)
+    pt_mult: float = Field(default=1.0, gt=0)
+    sl_mult: float = Field(default=1.0, gt=0)
+    max_holding: int = Field(default=42, gt=0)
+
+    @property
+    def horizon_bars(self) -> int:
+        """How many future bars a label may depend on (min purge)."""
+        return self.max_holding if self.type == "triple_barrier" else 1
+
+
 class SplitSettings(BaseModel):
     """Purged walk-forward cross-validation layout (all sizes in bars)."""
 
@@ -63,9 +84,26 @@ class BenchmarkSettings(BaseModel):
 
     dataset: DatasetSettings = DatasetSettings()
     features: FeatureSettings = FeatureSettings()
+    target: TargetSettings = TargetSettings()
     split: SplitSettings = SplitSettings()
     models: ModelSettings = ModelSettings()
     backtest: BacktestSettings = BacktestSettings()
+
+    @model_validator(mode="after")
+    def _purge_covers_label_horizon(self) -> BenchmarkSettings:
+        """Reject configs where training labels could overlap the test window.
+
+        A label spanning ``horizon`` future bars leaks test information into
+        training unless at least ``horizon`` bars are purged before each
+        test fold (the "open trade" overlap of triple-barrier labels).
+        """
+        if self.split.purge < self.target.horizon_bars:
+            raise ValueError(
+                f"split.purge ({self.split.purge}) must be >= the label horizon "
+                f"({self.target.horizon_bars} bars for target type "
+                f"{self.target.type!r}): training labels would overlap the test window"
+            )
+        return self
 
 
 def load_benchmark_settings(path: Path | None = None) -> BenchmarkSettings:
